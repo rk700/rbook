@@ -1,0 +1,31 @@
+README for rbook
+================
+
+Dependencies
+------------
+rbook requires wxPython(version >= 2.8) and Poppler Python.
+
+* http://wxpython.org/
+* https://launchpad.net/poppler-python
+
+
+Install
+-------
+Extract the tarball and run
+
+	python setup.py install
+
+Run
+
+	python setup.py --help
+
+for more information about installation.
+
+
+Comments and bug reports
+------------------------
+Project page is on
+https://github.com/rk700/rbook.git
+
+You can also send email to the author:
+Ruikai Liu <lrk700@gmail.com>
