@@ -30,18 +30,32 @@ from filelist import FileList
 from viewer import DocViewer
 
 
+def add_help_file():
+    xml_file = '<dir name="/" quick_visit="0">'\
+                '<dir name="Uncategorized" quick_visit="1">'
+    help_file = '/usr/share/rbook/viewer.pdf'
+    if not os.path.exists(help_file):
+        xml_file += '</dir> </dir>'
+    else:
+        inode = str(os.stat(help_file).st_ino)
+        xml_file += '<file title="Viewer Shortcuts" '\
+                    'author="Ruikai Liu" inode="' + inode +\
+                    '" current_page="0" quick_visit="2" ' +\
+                    'path="' + help_file +'" create_time="' +\
+                    datetime.now().strftime('%b %d %Y %H:%M:%S')+\
+                    '"/></dir> </dir>'
+    return xml_file
+
+
 def create_xml_file(rbook_dir, xmlfile):
-    init_file = '<dir name="/" quick_visit="0">'\
-                '<dir name="Uncategorized" quick_visit="1">'\
-                '</dir> </dir>'
     if not os.path.exists(rbook_dir):
-        os.makedirs(rbook_dir)
+        os.makedirs(rbook_dir, 0755)
         fout = open(xmlfile, 'w')
-        fout.write(init_file)
+        fout.write(add_help_file())
         fout.close()
     if not os.path.exists(xmlfile):
         fout = open(xmlfile, 'w')
-        fout.write(init_file)
+        fout.write(add_help_file())
         fout.close()
 
 

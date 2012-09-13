@@ -2,11 +2,10 @@
 
 from distutils.core import setup
 
-setup(
-    name = 'rbook',
-    version = '0.1.0',
-    description = 'A simple PDF document manager',
-    classifiers = [
+setup(name = 'rbook',
+      version = '0.1.0',
+      description = 'A simple PDF document manager',
+      classifiers = [
         'Development Status :: 4 - Beta',
         'Environment :: X11 Applications :: GTK',
         'Intended Audience :: End Users/Desktop',
@@ -14,11 +13,12 @@ setup(
         'Operating System :: POSIX',
         'Programming Language :: Python :: 2.7',
         'Topic :: Utilities',
-    ],
-    url = 'https://github.com/rk700/rbook.git',
-    author = 'Ruikai Liu',
-    author_email = 'lrk700@gmail.com',
-    license = 'GPLv3+',
-    packages = ['rbook'],
-    scripts = ['bin/rbook']
-)
+      ],
+      url = 'https://github.com/rk700/rbook',
+      author = 'Ruikai Liu',
+      author_email = 'lrk700@gmail.com',
+      license = 'GPLv3+',
+      packages = ['rbook'],
+      scripts = ['bin/rbook'],
+      data_files = [('/usr/share/rbook', ['viewer.pdf'])]
+     )
