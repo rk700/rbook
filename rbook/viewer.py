@@ -462,8 +462,10 @@ class DocViewer(wx.Frame):
             elif rawkeycode == 103 or rawkeycode == 90 or rawkeycode == 109: 
             #no prev key, no nums, press g or Z or m
                 self.prev_key.append(rawkeycode)
-            elif rawkeycode == 114:
+            elif rawkeycode == 114: # press r
                 self.on_refresh(None)
+			elif rawkeycode == 119: # press w
+				self.fit_width(None)
             elif rawkeycode == 71:#press G
                 self.marks[96] = (self.current_page_idx, 
                                   self.scale, 
