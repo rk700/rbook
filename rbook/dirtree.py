@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf8 -*-
 #
 # Copyright (C) 2012 Ruikai Liu <lrk700@gmail.com>
 #
@@ -237,7 +238,7 @@ class MainDirTree(DirTree):
         self.traverse(root_dir, self.search_text, (text, file_eles, dirs))
 
     def search_file_inode(self, inode, root_dir):
-        info = (inode, [None, 0])
+        info = (inode, [None, None])
         self.traverse(root_dir, self.search_inode, info)
         return info
 
@@ -248,15 +249,16 @@ class MainDirTree(DirTree):
             (title, author, ignore_case, reg, choice, time, file_eles, dirs))
 
     def search_inode(self, current_dir, info):
-        # info[0] is inode, info[1] is [current_dir, index]
-        i = 0
+        # info[0] is inode, info[1] is [current_dir, file_ele]
+        #i = 0
         current_dir_ele = self.GetPyData(current_dir)
         for file_ele in current_dir_ele.findall('file'):
             if file_ele.get('inode') == info[0]:
                 info[1][0] = current_dir
-                info[1][1] = i
+                info[1][1] = file_ele
+                #info[1][1] = i
                 return (info, True)
-            i += 1
+            #i += 1
         return (info, False)
 
     def search_inodes(self, current_dir, info):

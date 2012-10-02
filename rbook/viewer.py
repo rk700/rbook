@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf8 -*-
 #
 # Copyright (C) 2012 Ruikai Liu <lrk700@gmail.com>
 #
@@ -17,33 +18,23 @@
 # You should have received a copy of the GNU General Public License
 # along with rbook.  If not, see <http://www.gnu.org/licenses/>.
 
-from poppler import document_new_from_file
+import subprocess
+
 import wx
-from wx.lib.wxcairo import ContextFromDC
+from fitz import *
 
 
 class DocScroll(wx.ScrolledWindow):
-    def __init__(self, parent, width, height, scale, current_page):
-        self.scroll_unit = scroll_unit = 10.0
+    def __init__(self, parent, current_page):
+        self.scroll_unit = 10.0
         wx.ScrolledWindow.__init__(self, parent)
-        self.cairo = None
         self.parent = parent
-        self.width = width
-        self.height = height
-        self.scale = scale
-        self.current_page = current_page
-        p_width = width*scale
-        p_height = height*scale
-        self.panel = wx.Panel(self, size=(p_width, p_height))
-        self.SetVirtualSize((p_width, p_height))
-        self.SetScrollbars(scroll_unit, scroll_unit, 
-                           p_width/scroll_unit, p_height/scroll_unit)
-        self.put_center()
-
-        self.buffer = wx.EmptyBitmap(p_width, p_height)
-        dc = wx.BufferedDC(wx.ClientDC(self.panel), self.buffer)
-        self.do_drawing(dc)
-
+        self.ctx = self.parent.ctx
+        self.vscroll_wid = wx.SystemSettings_GetMetric(wx.SYS_VSCROLL_X)
+        self.fit_width_scale(current_page)
+        self.panel = wx.Panel(self, -1)
+        self.set_current_page(current_page, 1)
+       
         self.panel.Bind(wx.EVT_PAINT, self.on_paint)
         self.Bind(wx.EVT_SIZE, self.on_size)
         self.Bind(wx.EVT_SCROLLWIN_LINEDOWN, 
@@ -51,71 +42,162 @@ class DocScroll(wx.ScrolledWindow):
         self.Bind(wx.EVT_SCROLLWIN_LINEUP, 
                   lambda event:self.vertical_scroll(-1))
         self.panel.Bind(wx.EVT_KEY_DOWN, self.parent.on_key_down)
+        self.panel.Bind(wx.EVT_MOTION, self.on_motion)
+        self.panel.Bind(wx.EVT_LEFT_DOWN, self.on_left_down)
+
         self.panel.SetFocus()
+
+    def search_fwd(self, s):
+        pass
+
+    def search_back(self, s):
+        pass
+
+    def on_motion(self, event):
+        link = self.link
+        cx, cy = event.GetPositionTuple()
+        while not link is None:
+            rect = self.trans.transform_rect(link.get_rect())
+            if cx >= rect.x0 and cx <= rect.x1 and \
+               cy >= rect.y0 and cy <= rect.y1:
+                break
+            link = link.get_next()
+        if not link is None:
+            self.panel.SetCursor(wx.StockCursor(wx.CURSOR_HAND))
+            self.cursor_on_link = (link.get_kind(), \
+                                   link.get_page(), \
+                                   link.get_page_lt(), \
+                                   link.get_uri())
+        else:
+            self.panel.SetCursor(wx.StockCursor(wx.CURSOR_ARROW))
+            self.cursor_on_link = None
+
+    def on_left_down(self, event):
+        if not self.cursor_on_link is None:
+            if self.cursor_on_link[0] == FZ_LINK_GOTO:
+                page_idx = self.cursor_on_link[1]
+                pos = self.cursor_on_link[2]
+                self.parent.change_page(page_idx)
+                pos = self.trans.transform_point(pos)
+                self.Scroll(-1, pos.y/self.scroll_unit)
+            elif self.cursor_on_link[0] == FZ_LINK_URI:
+                subprocess.call(('xdg-open', self.cursor_on_link[3]))
+
+    def fit_width_scale(self, current_page):
+        rect = current_page.bound_page()
+        width = rect.get_width()
+        w_width, w_height = self.parent.GetSize()
+        scale = round((w_width-self.vscroll_wid)/width-0.005, 2)
+        if scale > self.parent.min_scale and scale < self.parent.max_scale:
+            self.scale = scale
+        else:
+            self.scale = 1.0
 
     def on_paint(self, event):
         dc = wx.BufferedPaintDC(self.panel, self.buffer, wx.BUFFER_VIRTUAL_AREA)
 
-    def do_drawing(self, dc):
-        self.cairo = ContextFromDC(dc)
-        self.cairo.set_source_rgb(1, 1, 1)
-        if self.scale != 1:
-            self.cairo.scale(self.scale, self.scale)
-        self.cairo.rectangle(0, 0, self.width, self.height)
-        self.cairo.fill()
-        self.current_page.render(self.cairo)
+    def set_page_size(self):
+        self.trans = scale_matrix(self.scale, self.scale)
+        self.page_rect = self.current_page.bound_page()
+        rect = self.trans.transform_rect(self.page_rect)
+        self.bbox = rect.round_rect()
 
-    def update_drawing(self):
-        dc = wx.BufferedDC(wx.ClientDC(self.panel), self.buffer)
-        self.do_drawing(dc)
-        self.panel.Refresh()
+        self.width = self.bbox.get_width()
+        self.height = self.bbox.get_height()
 
-    def set_current_page(self, current_page):
-        self.width, self.height = current_page.get_size()
-        width = self.width*self.scale
-        height = self.height*self.scale
-        self.Scroll(0, 0)
+#    def draw_pixmap(self, hitbbox=None):
+        #self.pix = new_pixmap_with_bbox(self.ctx, fz_device_rgb, self.bbox)
+        #self.pix.clear_pixmap_with_value(255);
+        #dev = new_draw_device(self.pix)
+        #self.display_list.run_display_list(dev, self.trans,
+                                           #self.bbox, None)
+        #if not hitbbox is None:
+            #self.pix.invert_pixmap_rect(self.trans.transform_bbox(hitbbox))
+        #do_drawing()
+
+    def do_drawing(self):
+        self.buffer = wx.BitmapFromBufferRGBA(self.pix.get_width(),
+                                              self.pix.get_height(), 
+                                              self.pix.get_samples())
+        dc = wx.BufferedDC(wx.ClientDC(self.panel), 
+                           self.buffer,
+                           wx.BUFFER_VIRTUAL_AREA)
+
+    def set_current_page(self, current_page, draw):
         self.current_page = current_page
-        self.panel.SetSize((width, height))
+        self.set_page_size()
+
+        self.text_sheet = new_text_sheet(self.ctx)
+        self.text_page = new_text_page(self.ctx, self.page_rect)
+
+        self.link = current_page.load_links()
+        self.cursor_on_link = None
+
+        self.display_list = new_display_list(self.ctx)
+        mdev = new_list_device(self.display_list)
+        current_page.run_page(mdev, fz_identity, None)
+
+        tdev = new_text_device(self.text_sheet, self.text_page)
+        self.display_list.run_display_list(tdev, fz_identity, 
+                                           fz_infinite_bbox, None)
+
+        if draw:
+            self.setup_drawing()
+#            self.panel.SetSize((self.width, self.height))
+            #self.SetVirtualSize((self.width, self.height))
+            #self.SetScrollbars(self.scroll_unit, self.scroll_unit, 
+                               #self.width/self.scroll_unit, 
+                               #self.height/self.scroll_unit)
+            #self.Scroll(0, 0)
+            #self.put_center()
+            #self.draw_pixmap()
+
+    def setup_drawing(self, hitbbox=None):
+        self.panel.SetSize((self.width, self.height))
+        self.SetVirtualSize((self.width, self.height))
+        self.SetScrollbars(self.scroll_unit, self.scroll_unit, 
+                           self.width/self.scroll_unit, 
+                           self.height/self.scroll_unit)
+        self.Scroll(0, 0)
         self.put_center()
-        self.buffer = wx.EmptyBitmap(width, height)
-        self.update_drawing()
-        self.SetVirtualSize((width, height))
+
+        self.pix = new_pixmap_with_bbox(self.ctx, fz_device_rgb, self.bbox)
+        self.pix.clear_pixmap_with_value(255);
+        dev = new_draw_device(self.pix)
+        self.display_list.run_display_list(dev, self.trans,
+                                           self.bbox, None)
+        if not hitbbox is None:
+            self.pix.invert_pixmap_rect(self.trans.transform_bbox(hitbbox))
+
+        self.do_drawing()
 
     def set_scale(self, scale):
         self.scale = scale
-        width = self.width*scale
-        height = self.height*scale
-        scroll_x, scroll_y = self.GetViewStart()
         p_width, p_height = self.panel.GetSize()
+        self.set_page_size()
+        scroll_x, scroll_y = self.GetViewStart()
         x = 1.0*scroll_x/p_width
         y = 1.0*scroll_y/p_height
-        self.Scroll(0, 0)
-        self.panel.SetSize((width, height))
-        self.put_center()
-        self.buffer = wx.EmptyBitmap(width, height)
-        self.update_drawing()
-        self.SetVirtualSize((width, height))
-        self.Scroll(int(x*width), int(y*height))
-        self.parent.set_zoom_tools()
+        self.setup_drawing()
+        self.Scroll(int(x*self.width), int(y*self.height))
 
     def on_size(self, event):
         scroll_x, scroll_y = self.GetViewStart()
         self.Scroll(0, 0)
         self.put_center()
         self.Scroll(scroll_x, scroll_y)
+
     def put_center(self):
-        w_width, w_height = self.GetSize()
-        p_width, p_height = self.panel.GetSize()
+        w_width, w_height = self.parent.GetSize()
         h_move = 0
         v_move = 0
-        if w_width > p_width:
-            if w_height < p_height:
-                h_move = (w_width-self.parent.vscroll_wid-p_width)/2
+        if w_width > self.width:
+            if w_height < self.height:
+                h_move = (w_width-self.vscroll_wid-self.width)/2
             else:
-                h_move = (w_width-p_width)/2
-        if w_height > p_height:
-            v_move = (w_height-p_height)/2
+                h_move = (w_width-self.width)/2
+        if w_height > self.height:
+            v_move = (w_height-self.height)/2
         self.panel.Move((h_move, v_move))
 
     def vertical_scroll(self, move):
@@ -158,137 +240,126 @@ class DocViewer(wx.Frame):
         self.min_scale = 0.2
         self.max_scale = 4.0
 
-        self.vscroll_wid = wx.SystemSettings_GetMetric(wx.SYS_VSCROLL_X)
         wx.Frame.__init__(self, parent, title=file_ele.get('title'), 
                           size=(800,700))
         self.parent = parent
-        filepath = file_ele.get('path')
-        self.uri = "file://" + filepath
+        self.filepath = file_ele.get('path')
         self.current_page_idx = int(file_ele.get('current_page'))
-        self.document = document_new_from_file(self.uri, None)
-        self.n_pages = self.document.get_n_pages()
-
-        self.marks = {}
-        self.page_back = []
-        self.page_fwd = []
-        self.prev_key = []
-        self.prev_num = []
-        self.prev_cmd = [False, False, []]
-
-        current_page = self.document.get_page(self.current_page_idx)
-        self.width, self.height = current_page.get_size()
-        self.scale = round((800.0-self.vscroll_wid)/self.width-0.005, 2)
-
-        button_size = (24, 24)
-
-        self.toolbar = self.CreateToolBar(wx.TB_HORIZONTAL | 
-                                          wx.NO_BORDER | 
-                                          wx.TB_FLAT)
-        self.toolbar.SetToolBitmapSize(button_size)
-        button_prev = self.toolbar.AddLabelTool(
-                        1, 'Previous', 
-                        wx.ArtProvider.GetBitmap('gtk-go-up', 
-                                                 size=(24, 24)),
-                        shortHelp='Go to previous page')
-        button_next = self.toolbar.AddLabelTool(
-                        2, 'Next', 
-                        wx.ArtProvider.GetBitmap('gtk-go-down', 
-                                                 size=(24, 24)),
-                        shortHelp='Go to next page')
-        button_back = self.toolbar.AddLabelTool(
-                        3, 'Backward', 
-                        wx.ArtProvider.GetBitmap('gtk-go-back', 
-                                                 size=(24, 24)),
-                        shortHelp='Go back')
-        button_fwd = self.toolbar.AddLabelTool(
-                        4, 'Forward', 
-                        wx.ArtProvider.GetBitmap('gtk-go-forward',
-                                                 size=(24, 24)), 
-                        shortHelp='Go fowrard')
-
-        self.entry1 = wx.TextCtrl(self.toolbar, 
-                                  value=str(self.current_page_idx+1), 
-                                  style=wx.TE_PROCESS_ENTER, size=(50,-1))
-        self.toolbar.AddControl(self.entry1)
-        self.total_pages = wx.StaticText(self.toolbar, 
-                                         label=' of %d' % self.n_pages)
-        self.toolbar.AddControl(self.total_pages)
-        self.toolbar.AddSeparator()
-
-        button_zin = self.toolbar.AddLabelTool(
-                        5, 'Zoom in', 
-                        wx.ArtProvider.GetBitmap('gtk-zoom-in', 
-                                                 size=(24, 24)),
-                        shortHelp='Zoom in')
-        button_zout = self.toolbar.AddLabelTool(
-                        6, 'Zoom out', 
-                        wx.ArtProvider.GetBitmap('gtk-zoom-out', 
-                                                 size=(24, 24)),
-                        shortHelp='Zoom out')
-        button_fwid = self.toolbar.AddLabelTool(
-                        -1, 'Zoom fit', 
-                        wx.ArtProvider.GetBitmap('gtk-zoom-fit',
-                                                 size=(24, 24)),
-                        shortHelp='Fit width')
+        self.ctx = new_context(FZ_STORE_UNLIMITED)
+        self.document = open_document(self.ctx, self.filepath)
+        self.n_pages = self.document.count_pages()
         
-        self.entry2 = wx.TextCtrl(self.toolbar, value=str(self.scale), 
-                                  style=wx.TE_PROCESS_ENTER, size=(50,-1))
-        self.toolbar.AddControl(self.entry2)
-        self.toolbar.AddSeparator()
-        button_refresh = self.toolbar.AddLabelTool(
-                            -1, 'Refresh', 
-                            wx.ArtProvider.GetBitmap('gtk-refresh',
-                                                     size=(24, 24)),
-                            shortHelp='Refresh')
+        current_page = self.document.load_page(self.current_page_idx)
 
-        self.set_page_tools()
-        self.set_zoom_tools()
-        
-        self.win = DocScroll(self, self.width, self.height, 
-                             self.scale, current_page)
-        self.Bind(wx.EVT_TOOL, self.on_prev_page, button_prev)
-        self.Bind(wx.EVT_TOOL, self.on_next_page, button_next)
-        self.Bind(wx.EVT_TOOL, self.on_zoom_in, button_zin)
-        self.Bind(wx.EVT_TOOL, self.on_zoom_out, button_zout)
-        self.Bind(wx.EVT_TOOL, self.fit_width, button_fwid)
-        self.Bind(wx.EVT_TOOL, self.on_page_back, button_back)
-        self.Bind(wx.EVT_TOOL, self.on_page_fwd, button_fwd)
-        self.Bind(wx.EVT_TOOL, self.on_refresh, button_refresh)
-        self.Bind(wx.EVT_KEY_DOWN, self.on_key_down)
-        self.entry1.Bind(wx.EVT_TEXT_ENTER, self.on_page_changed)
-        self.entry2.Bind(wx.EVT_TEXT_ENTER, self.on_scale_changed)
+        self.win = DocScroll(self, current_page);
+        self.scale = self.win.scale
+        self.statusbar = self.CreateStatusBar()
+        self.statusbar.SetFieldsCount(2)
+        self.update_statusbar()
         self.Bind(wx.EVT_CLOSE, self.on_close)
         
+        self.init()
         self.Show()
 
     def on_refresh(self, event):
-        self.document = document_new_from_file(self.uri, None)
-        self.n_pages = self.document.get_n_pages()
+        self.document = open_document(self.ctx, self.filepath)
+        self.n_pages = self.document.count_pages()
         if self.n_pages > self.current_page_idx:
             current_page_idx = self.current_page_idx
         else:
             current_page_idx = self.n_pages - 1
 
+        
+        self.init()
+        pos = self.win.GetViewStart()
+        self.set_current_page(current_page_idx)
+        self.win.Scroll(pos[0], pos[1])
+        self.update_statusbar()
+
+    def init(self):
         self.marks = {}
         self.page_back = []
         self.page_fwd = []
         self.prev_key = []
         self.prev_num = []
+        self.statusbar.SetStatusText('', 0)
         self.prev_cmd = [False, False, []]
-        
-        pos = self.win.GetViewStart()
-        self.set_current_page(current_page_idx)
-        self.win.Scroll(pos[0], pos[1])
-        self.total_pages.SetLabel(' of %d' % self.n_pages)
-        self.toolbar.Realize()
+        self.search_text = ''
+        self.hitbbox = None
+        self.hit = 0
+        self.ori = 1
 
-    def set_current_page(self, current_page_idx):
-        self.current_page_idx = current_page_idx
-        current_page = self.document.get_page(current_page_idx)
-        self.width, self.height = current_page.get_size()
-        self.win.set_current_page(current_page)
-        self.entry1.SetValue(str(current_page_idx+1))
-        self.set_page_tools()
+    def search(self, s, ori):
+        current_page_idx = self.current_page_idx
+        hitbbox = self.win.text_page.search(s, 0)
+        while len(hitbbox) == 0:
+            current_page_idx += ori
+            if current_page_idx == self.n_pages:
+                current_page_idx = 0
+            elif current_page_idx == -1:
+                current_page_idx = self.n_pages-1
+
+            if not current_page_idx == self.current_page_idx:
+                self.set_current_page(current_page_idx, 0)
+                hitbbox = self.win.text_page.search(s, 0)
+            else:
+                break
+        if len(hitbbox) == 0: #not found
+            self.set_current_page(self.current_page_idx)
+        else:
+            self.hitbbox = hitbbox
+            if ori < 0:
+                self.hit = len(hitbbox)-1
+            else:
+                self.hit = 0
+            self.current_page_idx = current_page_idx
+            self.update_statusbar()
+            self.win.setup_drawing(hitbbox[self.hit])
+
+    def update_statusbar(self):
+        self.statusbar.SetStatusText('%d/%d    %d%%' % 
+                                     (self.current_page_idx+1, 
+                                      self.n_pages,
+                                      int(100*self.scale)), 
+                                     1)
+
+    def search_next(self, ori):
+        if self.search_text == '':
+            pass
+        elif len(self.hitbbox) == 0:#a new page
+            self.search(self.search_text, ori*self.ori)
+        else:
+            newhit = self.hit + self.ori*ori
+            if newhit > len(self.hitbbox)-1:# search in the next page
+                page_index = self.current_page_idx + 1
+                if page_index == self.n_pages:
+                    page_index = 0
+                self.set_current_page(page_index, 0)
+                self.current_page_idx = page_index
+                self.search(self.search_text, ori*self.ori)
+            elif newhit < 0: #search in the prev page
+                page_index = self.current_page_idx - 1
+                if page_index == -1:
+                    page_index = self.n_pages - 1
+                self.set_current_page(page_index, 0)
+                self.current_page_idx = page_index
+                self.search(self.search_text, ori*self.ori)
+            else:
+                self.win.pix.invert_pixmap_rect(self.win.trans.transform_bbox(
+                                                    self.hitbbox[self.hit]))
+                self.win.pix.invert_pixmap_rect(self.win.trans.transform_bbox(
+                                                    self.hitbbox[newhit]))
+                self.hit = newhit
+                self.win.do_drawing()
+
+
+    def set_current_page(self, current_page_idx, draw=1):
+        current_page = self.document.load_page(current_page_idx)
+        self.hitbbox = []
+        self.win.set_current_page(current_page, draw)
+        if draw:
+            self.current_page_idx = current_page_idx
+            self.update_statusbar()
 
     def on_page_back(self, event):
         if len(self.page_back) == 0:
@@ -304,71 +375,23 @@ class DocViewer(wx.Frame):
             self.page_back.append(self.current_page_idx)
             self.set_current_page(self.page_fwd.pop())
 
-    def fit_width(self, event):
-        w_width, w_height = self.win.GetSize()
-        scale = round((w_width-self.vscroll_wid)/self.width-0.005, 2)
-        if scale > self.min_scale and scale < self.max_scale:
-            self.scale = scale
-            self.win.set_scale(scale)
-
-    def set_zoom_tools(self):
-        self.entry2.SetValue(str(self.scale))
-        if self.scale < self.max_scale:
-            self.toolbar.EnableTool(5, True)
-        else:
-            self.toolbar.EnableTool(5, False)
-        if self.scale > self.min_scale:
-            self.toolbar.EnableTool(6, True)
-        else:
-            self.toolbar.EnableTool(6, False)
+    def on_fit_width(self, event):
+        self.win.fit_width_scale(self.win.current_page)
+        self.scale = self.win.scale
+        self.set_zoom_tools()
+        self.win.set_scale(self.scale)
 
     def on_zoom_in(self, event):
         if self.scale < self.max_scale:
             self.scale += 0.2
             self.win.set_scale(self.scale)
+            self.update_statusbar()
             
     def on_zoom_out(self, event):
         if self.scale > self.min_scale:
             self.scale -= 0.2
             self.win.set_scale(self.scale)
-
-    def set_page_tools(self):
-        if self.current_page_idx == 0:
-            self.toolbar.EnableTool(1, False)
-        else:
-            self.toolbar.EnableTool(1, True)
-        if self.current_page_idx == self.n_pages-1:
-            self.toolbar.EnableTool(2, False)
-        else:
-            self.toolbar.EnableTool(2, True)
-        if len(self.page_back) == 0:
-            self.toolbar.EnableTool(3, False)
-        else:
-            self.toolbar.EnableTool(3, True)
-        if len(self.page_fwd) == 0:
-            self.toolbar.EnableTool(4, False)
-        else:
-            self.toolbar.EnableTool(4, True)
-
-    def on_page_changed(self, event):
-        self.win.panel.SetFocus()
-        try:
-            page_idx = int(self.entry1.GetValue())-1
-        except ValueError:
-            pass
-        else:
-            self.change_page(page_idx)
-
-    def on_scale_changed(self, event):
-        self.win.panel.SetFocus()
-        try:
-            scale = float(self.entry2.GetValue())
-        except ValueError:
-            pass
-        else:
-            if scale > self.min_scale and scale < self.max_scale:
-                self.scale = scale
-                self.win.set_scale(scale)
+            self.update_statusbar()
 
     def on_close(self, event):
         self.parent.doc_list.remove(self)
@@ -411,9 +434,25 @@ class DocViewer(wx.Frame):
              keycode == wx.WXK_SPACE:#c-d
             self.win.vertical_scroll(20)
             self.prev_cmd = [True, False, [68]]
+        elif (keycode == wx.WXK_RETURN):
+            text = self.statusbar.GetStatusText()
+            if text:
+                self.search_text = str(text[1:])
+                if text[0] == '/':
+                    self.search(self.search_text, 1)
+                    self.ori = 1
+                elif text[0] == '?':
+                    self.search(self.search_text, -1)
+                    self.ori = -1
+            self.prev_key = []
+            self.prev_num = []
+            self.statusbar.SetStatusText('')
         elif (rawkeycode > 96 and rawkeycode < 123) or\
              (rawkeycode > 64 and rawkeycode < 91):#press letters
-            if len(self.prev_key) > 0: #check if it's part of a cmd
+            text = str(self.statusbar.GetStatusText())
+            if text and (text[0] == '/' or text[0] == '?'): #search 
+                self.statusbar.SetStatusText(text+chr(rawkeycode))
+            elif len(self.prev_key) > 0: #check if it's part of a cmd
                 if self.prev_key[0] == 103:#prev is g
                     if rawkeycode == 103:#press another g
                         if len(self.prev_num) == 0:#no nums
@@ -464,8 +503,8 @@ class DocViewer(wx.Frame):
                 self.prev_key.append(rawkeycode)
             elif rawkeycode == 114: # press r
                 self.on_refresh(None)
-			elif rawkeycode == 119: # press w
-				self.fit_width(None)
+            elif rawkeycode == 119: # press w
+                self.on_fit_width(None)
             elif rawkeycode == 71:#press G
                 self.marks[96] = (self.current_page_idx, 
                                   self.scale, 
@@ -483,11 +522,18 @@ class DocViewer(wx.Frame):
             elif rawkeycode == 108:#press l
                 self.win.horizontal_scroll(1)
                 self.prev_cmd = [False, False, [108]]
-        elif keycode > 47 and keycode < 58:#press digit
+            elif rawkeycode == 110:#press n
+                self.search_next(1)
+            elif rawkeycode == 78:#press N
+                self.search_next(-1)
+        elif rawkeycode > 47 and rawkeycode < 58:#press digit
+            #if len(self.prev_num) == 0:
+                #self.statusbar.SetStatusText('', 0)
             if len(self.prev_key) > 0:
                 self.prev_key = []
             else:
                 self.prev_num.append(keycode)
+                self.statusbar.SetStatusText(str(self.get_num()), 0)
         elif rawkeycode == 96 or rawkeycode == 39:#press ' or `
             if len(self.prev_num) > 0:#has num
                 self.prev_num = []
@@ -523,9 +569,15 @@ class DocViewer(wx.Frame):
         elif keycode == wx.WXK_ESCAPE:
             self.prev_key = []
             self.prev_num = []
+            self.statusbar.SetStatusText('', 0)
         elif keycode == 46: #. repeat cmd
             for key in self.prev_cmd[2]:
                 self.handle_keys(key, key, self.prev_cmd[0], self.prev_cmd[1])
+        elif rawkeycode == 47: # press /
+            self.statusbar.SetStatusText('/', 0)
+        elif rawkeycode == 63: #press ?
+            self.statusbar.SetStatusText('?', 0)
+
 
     def get_num(self):
         page = ''
@@ -543,6 +595,7 @@ class DocViewer(wx.Frame):
                 self.set_current_page(page_idx)
             self.scale = scale
             self.win.set_scale(scale)
+            self.set_zoom_tools()
             self.win.Scroll(point[0], point[1])
             self.marks[96] = mark
 

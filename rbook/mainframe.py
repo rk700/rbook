@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf8 -*-
 #
 # Copyright (C) 2012 Ruikai Liu <lrk700@gmail.com>
 #
@@ -250,9 +251,12 @@ class MainFrame(wx.Frame):
                 dir_ele = self.dir_tree.GetPyData(self.dir_tree.uncategorized)
                 dir_ele.append(file_ele)
             else:
-                self.dir_tree.SelectItem(info[1][0])
-                self.file_list.select_item(info[1][1])
-                self.file_list.on_open(None)
+                if not info[1][0] == self.dir_tree.GetSelection():
+                    self.dir_tree.SelectItem(info[1][0])
+                self.file_list.open_file_ele(info[1][1])
+                self.file_list.select_item(self.file_list.search_inode(file_inode))
+                #self.file_list.select_item(info[1][1])
+                #self.file_list.on_open(None)
         dlg.Destroy()
 
     def on_quick_add(self, event):

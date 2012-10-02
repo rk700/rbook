@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf8 -*-
 #
 # Copyright (C) 2012 Ruikai Liu <lrk700@gmail.com>
 #
@@ -89,6 +90,10 @@ class FileList(ULC.UltimateListCtrl, listmix.ColumnSorterMixin):
         doc = DocViewer(self, self.GetItemPyData(self.GetFirstSelected())[0])
         self.doc_list.append(doc)
 
+    def open_file_ele(self, file_ele):
+        doc = DocViewer(self, file_ele)
+        self.doc_list.append(doc)
+
     def on_dclick(self, event):
         point = event.GetPosition()
         item, flag = self.HitTest(point)
@@ -148,7 +153,12 @@ class FileList(ULC.UltimateListCtrl, listmix.ColumnSorterMixin):
             new_item = func(item)
             item = self.GetNextItem(new_item, ULC.ULC_NEXT_ALL,
                                     ULC.ULC_STATE_SELECTED)
-
+    def search_inode(self, inode):
+        item = self.GetNextItem(-1, ULC.ULC_NEXT_ALL)
+        while item != -1:
+            if self.GetItemPyData(item)[0].get('inode') == inode:
+                return item
+            item = self.GetNextItem(item, ULC.ULC_NEXT_ALL)
     def on_delete(self, event):
         self.traverse_selected(self.delete_item_and_qv)
 
