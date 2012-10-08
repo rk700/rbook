@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: utf8 -*-
+#-*- coding: utf8 -*-
 #
 # Copyright (C) 2012 Ruikai Liu <lrk700@gmail.com>
 #
@@ -18,8 +18,29 @@
 
 from datetime import datetime
 import xml.etree.cElementTree as ET
+import os
 
 import wx
+
+
+def get_newfile(path, time):
+    newfile = []
+    if os.path.exists(path):
+        for dirpaths, dirnames, filenames in os.walk(path):
+            for filename in filenames:
+                filepath = os.path.join(dirpaths, filename)
+                file_suf = filename[-3:].lower()
+                if (file_suf == 'pdf' or file_suf == 'cbz' or file_suf == 'xps') and \
+                   os.path.getctime(filepath) > time:
+                    file_ele = ET.Element('file', title=filename[0:-4], author='', 
+                                          current_page='0', path=filepath, 
+                                          create_time=datetime.now().
+                                          strftime('%b %d %Y %H:%M:%S'), 
+                                          inode=str(os.stat(filepath).st_ino), 
+                                          quick_visit='0')
+                    newfile.append(file_ele)
+
+    return newfile
 
 
 class RootNoFileDialog(wx.MessageDialog):

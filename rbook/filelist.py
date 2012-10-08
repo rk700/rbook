@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: utf8 -*-
+#-*- coding: utf8 -*-
 #
 # Copyright (C) 2012 Ruikai Liu <lrk700@gmail.com>
 #
@@ -19,6 +19,7 @@
 # along with rbook.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import subprocess
 
 import wx
 import wx.lib.agw.ultimatelistctrl as ULC
@@ -87,9 +88,20 @@ class FileList(ULC.UltimateListCtrl, listmix.ColumnSorterMixin):
         self.Select(index)
 
     def on_open(self, event):
-        doc = DocViewer(self, self.GetItemPyData(self.GetFirstSelected())[0])
-        self.doc_list.append(doc)
-
+        try:
+            doc = DocViewer(self, self.GetItemPyData(self.GetFirstSelected())[0])
+            self.doc_list.append(doc)
+        except IOError:
+            file_ele = self.GetItemPyData(self.GetFirstSelected())[0]
+            dialog = wx.MessageDialog(self, 
+                                      'Cannot open document %s at %s' % 
+                                            (file_ele.get('title'), 
+                                             file_ele.get('path')),
+                                      'Error',
+                                      wx.OK | wx.ICON_EXCLAMATION)
+            dialog.ShowModal()
+            dialog.Destroy()
+                                      
     def open_file_ele(self, file_ele):
         doc = DocViewer(self, file_ele)
         self.doc_list.append(doc)
@@ -191,9 +203,9 @@ class FileList(ULC.UltimateListCtrl, listmix.ColumnSorterMixin):
         dlg = wx.FileDialog(self, message='Choose a program', 
                             defaultDir=os.getcwd())
         if dlg.ShowModal() == wx.ID_OK:
-            os.system(
-                dlg.GetPath()+' '+
-                self.GetItemPyData(self.GetFirstSelected())[0].get('path')+' &')
+            subprocess.Popen((dlg.GetPath(), 
+                             self.GetItemPyData(
+                                 self.GetFirstSelected())[0].get('path')))
         dlg.Destroy()
 
     def move_to(self, target_dir):

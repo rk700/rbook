@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: utf8 -*-
+#-*- coding: utf8 -*-
 #
 # Copyright (C) 2012 Ruikai Liu <lrk700@gmail.com>
 #
@@ -22,10 +22,11 @@ from datetime import datetime
 import os
 import re
 import xml.etree.cElementTree as ET
+import time
 
 import wx
 
-from utils import SearchDialog, InfoInit, BarDropTarget, RootNoFileDialog
+from utils import *
 from dirtree import MainDirTree
 from filelist import FileList
 from viewer import DocViewer
@@ -94,6 +95,18 @@ class MainFrame(wx.Frame):
         self.xmlfile = os.path.expanduser('~/.rbook/books.xml')
         create_xml_file(rbook_dir, self.xmlfile)
 
+        self.configfile = os.path.expanduser('~/.rbook/config')
+        if os.path.exists(self.configfile):
+            f = open(self.configfile)
+            self.lines = f.readlines()
+            newfile = get_newfile(self.lines[0].strip(), 
+                                  float(self.lines[1].strip()))
+            f.close()
+        else:
+            self.lines = ['\n']*2
+            newfile = []
+
+
         self.CreateStatusBar()
 
         # some bmp used in menus and toolbar
@@ -156,6 +169,11 @@ class MainFrame(wx.Frame):
                           wx.ArtProvider.GetBitmap('folder_new', size=(16, 16)),
                           shortHelp='New subcategory',
                           longHelp='Create new subcategory')
+        tool_refresh = toolbar.AddLabelTool(
+                          -1, 'Sync',
+                          wx.ArtProvider.GetBitmap('gtk-refresh', size=(16, 16)),
+                          shortHelp='Sync',
+                          longHelp='Sync with the directory minitored')
         self.search = wx.SearchCtrl(toolbar, size=(300, -1),
                                     style=wx.TE_PROCESS_ENTER)
         self.search.ShowCancelButton(True)
@@ -170,6 +188,10 @@ class MainFrame(wx.Frame):
                                     ET.parse(self.xmlfile))
         self.file_list = FileList(split_win, -1, self.dir_tree)
         self.dir_tree.set_file_list(self.file_list)
+
+        for newfile_ele in newfile:
+            self.dir_tree.GetPyData(self.dir_tree.uncategorized).append(newfile_ele)
+
 
         split_win.SetMinimumPaneSize(180)
         split_win.SplitVertically(self.dir_tree, self.file_list, 200)
@@ -190,6 +212,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_TOOL, self.on_quick_add, tool_quickadd)
         self.Bind(wx.EVT_TOOL, self.on_open, tool_open)
         self.Bind(wx.EVT_TOOL, self.dir_tree.on_new_dir, tool_newdir)
+        self.Bind(wx.EVT_TOOL, self.on_sync, tool_refresh)
         self.Bind(wx.EVT_MENU, self.on_add, menu_add)
         self.Bind(wx.EVT_MENU, self.on_quick_add, menu_quickadd)
         self.Bind(wx.EVT_MENU, self.on_open, menu_open)
@@ -219,13 +242,26 @@ class MainFrame(wx.Frame):
             i += 1
 
         self.write_xml()
+
+        self.lines[1] = str(time.time())
+        f = open(self.configfile, 'w')
+        f.writelines(self.lines)
+        
         self.Destroy()
 
     def write_xml(self):
-        self.dir_tree.element_tree.write(self.xmlfile, encoding='utf-8')
+        self.dir_tree.element_tree.write(self.xmlfile, encoding='UTF-8')
 
     def on_exit(self, event):
         self.on_close(None)
+
+    def on_sync(self, event):
+        newfiles = get_newfile(self.lines[0].strip(), float(self.lines[1].strip()))
+        for newfile in newfiles:
+            if self.dir_tree.GetSelection() == self.dir_tree.uncategorized:
+                self.file_list.append_file_ele(newfile, self.dir_tree.uncategorized)
+            self.dir_tree.GetPyData(self.dir_tree.uncategorized).append(newfile)
+        self.lines[1] = str(time.time())
 
     def on_open(self, event):
         dlg = wx.FileDialog(self, "Open file", "", "", "*.pdf", wx.OPEN)

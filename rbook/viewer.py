@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: utf8 -*-
+#-*- coding: utf8 -*-
 #
 # Copyright (C) 2012 Ruikai Liu <lrk700@gmail.com>
 #
@@ -21,6 +21,7 @@
 import subprocess
 
 import wx
+#import poppler
 from fitz import *
 
 
@@ -33,7 +34,7 @@ class DocScroll(wx.ScrolledWindow):
         self.vscroll_wid = wx.SystemSettings_GetMetric(wx.SYS_VSCROLL_X)
         self.fit_width_scale(current_page)
         self.panel = wx.Panel(self, -1)
-        self.set_current_page(current_page, 1)
+        self.set_current_page(current_page, True)
        
         self.panel.Bind(wx.EVT_PAINT, self.on_paint)
         self.Bind(wx.EVT_SIZE, self.on_size)
@@ -47,45 +48,39 @@ class DocScroll(wx.ScrolledWindow):
 
         self.panel.SetFocus()
 
-    def search_fwd(self, s):
-        pass
-
-    def search_back(self, s):
-        pass
-
     def on_motion(self, event):
-        link = self.link
         cx, cy = event.GetPositionTuple()
-        while not link is None:
+        mouse_on_link = False
+        for link in self.links:
             rect = self.trans.transform_rect(link.get_rect())
             if cx >= rect.x0 and cx <= rect.x1 and \
                cy >= rect.y0 and cy <= rect.y1:
+                mouse_on_link = True
                 break
-            link = link.get_next()
-        if not link is None:
+        if mouse_on_link:
             self.panel.SetCursor(wx.StockCursor(wx.CURSOR_HAND))
-            self.cursor_on_link = (link.get_kind(), \
-                                   link.get_page(), \
-                                   link.get_page_lt(), \
-                                   link.get_uri())
+            self.link_context = (link.get_kind(), \
+                                 link.get_page(), \
+                                 link.get_page_lt(), \
+                                 link.get_uri())
         else:
             self.panel.SetCursor(wx.StockCursor(wx.CURSOR_ARROW))
-            self.cursor_on_link = None
+            self.link_context = None
 
     def on_left_down(self, event):
-        if not self.cursor_on_link is None:
-            if self.cursor_on_link[0] == FZ_LINK_GOTO:
-                page_idx = self.cursor_on_link[1]
-                pos = self.cursor_on_link[2]
-                self.parent.change_page(page_idx)
+        if not self.link_context is None:
+            if self.link_context[0] == FZ_LINK_GOTO:
+                # after change page, link_context becomes None,
+                # so we need to record the pos
+                pos = self.link_context[2]
+                self.parent.change_page(self.link_context[1])
                 pos = self.trans.transform_point(pos)
                 self.Scroll(-1, pos.y/self.scroll_unit)
-            elif self.cursor_on_link[0] == FZ_LINK_URI:
-                subprocess.call(('xdg-open', self.cursor_on_link[3]))
+            elif self.link_context[0] == FZ_LINK_URI:
+                subprocess.Popen(('xdg-open', self.link_context[3]))
 
     def fit_width_scale(self, current_page):
-        rect = current_page.bound_page()
-        width = rect.get_width()
+        width = current_page.bound_page().get_width()
         w_width, w_height = self.parent.GetSize()
         scale = round((w_width-self.vscroll_wid)/width-0.005, 2)
         if scale > self.parent.min_scale and scale < self.parent.max_scale:
@@ -97,23 +92,13 @@ class DocScroll(wx.ScrolledWindow):
         dc = wx.BufferedPaintDC(self.panel, self.buffer, wx.BUFFER_VIRTUAL_AREA)
 
     def set_page_size(self):
-        self.trans = scale_matrix(self.scale, self.scale)
         self.page_rect = self.current_page.bound_page()
+        self.trans = scale_matrix(self.scale, self.scale)
         rect = self.trans.transform_rect(self.page_rect)
         self.bbox = rect.round_rect()
 
         self.width = self.bbox.get_width()
         self.height = self.bbox.get_height()
-
-#    def draw_pixmap(self, hitbbox=None):
-        #self.pix = new_pixmap_with_bbox(self.ctx, fz_device_rgb, self.bbox)
-        #self.pix.clear_pixmap_with_value(255);
-        #dev = new_draw_device(self.pix)
-        #self.display_list.run_display_list(dev, self.trans,
-                                           #self.bbox, None)
-        #if not hitbbox is None:
-            #self.pix.invert_pixmap_rect(self.trans.transform_bbox(hitbbox))
-        #do_drawing()
 
     def do_drawing(self):
         self.buffer = wx.BitmapFromBufferRGBA(self.pix.get_width(),
@@ -130,8 +115,8 @@ class DocScroll(wx.ScrolledWindow):
         self.text_sheet = new_text_sheet(self.ctx)
         self.text_page = new_text_page(self.ctx, self.page_rect)
 
-        self.link = current_page.load_links()
-        self.cursor_on_link = None
+        self.links = current_page.load_links()
+        self.link_context = None
 
         self.display_list = new_display_list(self.ctx)
         mdev = new_list_device(self.display_list)
@@ -139,18 +124,10 @@ class DocScroll(wx.ScrolledWindow):
 
         tdev = new_text_device(self.text_sheet, self.text_page)
         self.display_list.run_display_list(tdev, fz_identity, 
-                                           fz_infinite_bbox, None)
+                                           self.bbox, None)
 
         if draw:
             self.setup_drawing()
-#            self.panel.SetSize((self.width, self.height))
-            #self.SetVirtualSize((self.width, self.height))
-            #self.SetScrollbars(self.scroll_unit, self.scroll_unit, 
-                               #self.width/self.scroll_unit, 
-                               #self.height/self.scroll_unit)
-            #self.Scroll(0, 0)
-            #self.put_center()
-            #self.draw_pixmap()
 
     def setup_drawing(self, hitbbox=None):
         self.panel.SetSize((self.width, self.height))
@@ -162,22 +139,22 @@ class DocScroll(wx.ScrolledWindow):
         self.put_center()
 
         self.pix = new_pixmap_with_bbox(self.ctx, fz_device_rgb, self.bbox)
-        self.pix.clear_pixmap_with_value(255);
+        self.pix.clear_pixmap(255);
         dev = new_draw_device(self.pix)
         self.display_list.run_display_list(dev, self.trans,
                                            self.bbox, None)
         if not hitbbox is None:
-            self.pix.invert_pixmap_rect(self.trans.transform_bbox(hitbbox))
+            self.pix.invert_pixmap(self.trans.transform_bbox(hitbbox))
 
         self.do_drawing()
 
     def set_scale(self, scale):
         self.scale = scale
         p_width, p_height = self.panel.GetSize()
-        self.set_page_size()
         scroll_x, scroll_y = self.GetViewStart()
         x = 1.0*scroll_x/p_width
         y = 1.0*scroll_y/p_height
+        self.set_page_size()
         self.setup_drawing()
         self.Scroll(int(x*self.width), int(y*self.height))
 
@@ -188,12 +165,12 @@ class DocScroll(wx.ScrolledWindow):
         self.Scroll(scroll_x, scroll_y)
 
     def put_center(self):
-        w_width, w_height = self.parent.GetSize()
+        w_width, w_height = self.GetSize()
         h_move = 0
         v_move = 0
         if w_width > self.width:
             if w_height < self.height:
-                h_move = (w_width-self.vscroll_wid-self.width)/2
+                h_move = max(0, w_width-self.vscroll_wid-self.width)/2
             else:
                 h_move = (w_width-self.width)/2
         if w_height > self.height:
@@ -206,18 +183,16 @@ class DocScroll(wx.ScrolledWindow):
         y = self.GetViewStart()[1] + move
         if y < 0:
             if self.GetViewStart()[1] > 0:
-                self.go_home()
+                self.Scroll(-1, 0)
             else:
                 if self.parent.current_page_idx == 0:
-                    isfirstpage = True
+                    pass
                 else:
-                    isfirstpage = False
-                self.parent.on_prev_page(None)
-                if not isfirstpage:
+                    self.parent.on_prev_page(None)
                     self.Scroll(0, self.GetScrollRange(wx.VERTICAL))
         elif y > bottom:
             if self.GetViewStart()[1] < bottom:
-                self.go_end()
+                self.Scroll(-1, self.GetScrollRange(wx.VERTICAL)) 
             else:
                 self.parent.on_next_page(None)
         else:
@@ -227,29 +202,28 @@ class DocScroll(wx.ScrolledWindow):
         x = self.GetViewStart()[0] + move
         self.Scroll(x, -1)
 
-    def go_home(self):
-        self.Scroll(-1, 0)
-
-    def go_end(self):
-        self.Scroll(-1, self.GetScrollRange(wx.VERTICAL))
 
 
 class DocViewer(wx.Frame):
     def __init__(self, parent, file_ele):
         self.file_ele = file_ele
-        self.min_scale = 0.2
+        self.min_scale = 0.25
         self.max_scale = 4.0
 
         wx.Frame.__init__(self, parent, title=file_ele.get('title'), 
                           size=(800,700))
         self.parent = parent
-        self.filepath = file_ele.get('path')
+        self.filepath = file_ele.get('path').encode('utf-8')
         self.current_page_idx = int(file_ele.get('current_page'))
         self.ctx = new_context(FZ_STORE_UNLIMITED)
         self.document = open_document(self.ctx, self.filepath)
         self.n_pages = self.document.count_pages()
-        
         current_page = self.document.load_page(self.current_page_idx)
+#        self.outline = self.document.load_outline()
+        #if not self.outline is None:
+            #item = self.outline.get_first()
+            #item = item.get_next()
+            #print(item.get_title())
 
         self.win = DocScroll(self, current_page);
         self.scale = self.win.scale
@@ -283,10 +257,11 @@ class DocViewer(wx.Frame):
         self.prev_key = []
         self.prev_num = []
         self.statusbar.SetStatusText('', 0)
-        self.prev_cmd = [False, False, []]
+        self.prev_cmd = ''
         self.search_text = ''
+        self.new_search = False
         self.hitbbox = None
-        self.hit = 0
+        self.hit = -1
         self.ori = 1
 
     def search(self, s, ori):
@@ -300,12 +275,14 @@ class DocViewer(wx.Frame):
                 current_page_idx = self.n_pages-1
 
             if not current_page_idx == self.current_page_idx:
-                self.set_current_page(current_page_idx, 0)
+                self.set_current_page(current_page_idx, False)
                 hitbbox = self.win.text_page.search(s, 0)
             else:
                 break
         if len(hitbbox) == 0: #not found
+            self.hit = -1
             self.set_current_page(self.current_page_idx)
+            self.statusbar.SetStatusText('"%s" not found' % self.search_text)
         else:
             self.hitbbox = hitbbox
             if ori < 0:
@@ -315,6 +292,8 @@ class DocViewer(wx.Frame):
             self.current_page_idx = current_page_idx
             self.update_statusbar()
             self.win.setup_drawing(hitbbox[self.hit])
+            self.win.Scroll(-1, self.win.trans.transform_bbox(
+                                hitbbox[self.hit]).y0/self.win.scroll_unit)
 
     def update_statusbar(self):
         self.statusbar.SetStatusText('%d/%d    %d%%' % 
@@ -326,34 +305,42 @@ class DocViewer(wx.Frame):
     def search_next(self, ori):
         if self.search_text == '':
             pass
-        elif len(self.hitbbox) == 0:#a new page
-            self.search(self.search_text, ori*self.ori)
+        elif self.hit < 0:
+            self.statusbar.SetStatusText('"%s" not found' % self.search_text)
         else:
-            newhit = self.hit + self.ori*ori
-            if newhit > len(self.hitbbox)-1:# search in the next page
-                page_index = self.current_page_idx + 1
-                if page_index == self.n_pages:
-                    page_index = 0
-                self.set_current_page(page_index, 0)
-                self.current_page_idx = page_index
-                self.search(self.search_text, ori*self.ori)
-            elif newhit < 0: #search in the prev page
-                page_index = self.current_page_idx - 1
-                if page_index == -1:
-                    page_index = self.n_pages - 1
-                self.set_current_page(page_index, 0)
-                self.current_page_idx = page_index
+            if len(self.hitbbox) == 0:#a new page
                 self.search(self.search_text, ori*self.ori)
             else:
-                self.win.pix.invert_pixmap_rect(self.win.trans.transform_bbox(
-                                                    self.hitbbox[self.hit]))
-                self.win.pix.invert_pixmap_rect(self.win.trans.transform_bbox(
-                                                    self.hitbbox[newhit]))
-                self.hit = newhit
-                self.win.do_drawing()
+                newhit = self.hit + self.ori*ori
+                if newhit == len(self.hitbbox):# search in the next page
+                    page_index = self.current_page_idx + 1
+                    if page_index == self.n_pages:
+                        page_index = 0
+                    self.set_current_page(page_index, False)
+                    self.current_page_idx = page_index
+                    self.search(self.search_text, ori*self.ori)
+                elif newhit == -1: #search in the prev page
+                    page_index = self.current_page_idx - 1
+                    if page_index == -1:
+                        page_index = self.n_pages - 1
+                    self.set_current_page(page_index, False)
+                    self.current_page_idx = page_index
+                    self.search(self.search_text, ori*self.ori)
+                else:
+                    self.win.pix.invert_pixmap(self.win.trans.transform_bbox(
+                                                        self.hitbbox[self.hit]))
+                    new_hitbbox = self.win.trans.transform_bbox(self.hitbbox[newhit])
+                    self.win.pix.invert_pixmap(new_hitbbox)
+                    self.hit = newhit
+                    self.win.do_drawing()
+                    self.win.Scroll(-1, new_hitbbox.y0/self.win.scroll_unit)
+            if self.ori > 0:
+                self.statusbar.SetStatusText('/'+self.search_text);
+            else:
+                self.statusbar.SetStatusText('?'+self.search_text);
 
 
-    def set_current_page(self, current_page_idx, draw=1):
+    def set_current_page(self, current_page_idx, draw=True):
         current_page = self.document.load_page(current_page_idx)
         self.hitbbox = []
         self.win.set_current_page(current_page, draw)
@@ -362,23 +349,19 @@ class DocViewer(wx.Frame):
             self.update_statusbar()
 
     def on_page_back(self, event):
-        if len(self.page_back) == 0:
-            pass
-        else:
+        if len(self.page_back) > 0:
             self.page_fwd.append(self.current_page_idx)
             self.set_current_page(self.page_back.pop())
 
     def on_page_fwd(self, event):
-        if len(self.page_fwd) == 0:
-            pass
-        else:
+        if len(self.page_fwd) > 0:
             self.page_back.append(self.current_page_idx)
             self.set_current_page(self.page_fwd.pop())
 
     def on_fit_width(self, event):
         self.win.fit_width_scale(self.win.current_page)
         self.scale = self.win.scale
-        self.set_zoom_tools()
+        self.update_statusbar()
         self.win.set_scale(self.scale)
 
     def on_zoom_in(self, event):
@@ -413,54 +396,61 @@ class DocViewer(wx.Frame):
         event.Skip()
 
     def handle_keys(self, keycode, rawkeycode, ctrl_down, shift_down):
-        if ctrl_down and keycode == 70: #c-f
+        if self.new_search:
+            text = self.statusbar.GetStatusText()
+            if (keycode == wx.WXK_BACK):
+                text = text[0:-1]
+                self.statusbar.SetStatusText(text)
+                if len(text) == 0:
+                    self.new_search = False
+            elif (keycode == wx.WXK_RETURN):
+                if len(text) > 1:
+                    self.search_text = str(text[1:])
+                    if text[0] == '/':
+                        self.search(self.search_text, 1)
+                        self.ori = 1
+                    elif text[0] == '?':
+                        self.search(self.search_text, -1)
+                        self.ori = -1
+                self.prev_key = []
+                self.new_search = False
+            else:
+                self.statusbar.SetStatusText(self.statusbar.GetStatusText()+\
+                                             chr(rawkeycode))
+        elif ctrl_down and keycode == 70: #c-f
             self.on_next_page(None)
-            self.prev_cmd = [True, False, [70]]
+            self.prev_cmd = 'self.on_next_page(None)'
         elif ctrl_down and keycode == 66: #c-b
             self.on_prev_page(None)
-            self.prev_cmd = [True, False, [66]]
+            self.prev_cmd = 'self.on_prev_page(None)'
         elif ctrl_down and keycode == 79: #c-o
             self.on_page_back(None)
-            self.prev_cmd = [True, False, [79]]
+            self.prev_cmd = 'self.on_page_back(None)'
         elif ctrl_down and keycode == 73: #c-i
             self.on_page_fwd(None)
-            self.prev_cmd = [True, False, [73]]
+            self.prev_cmd = 'self.on_page_fwd(None)'
         elif (ctrl_down and keycode == 85) or\
              (not ctrl_down and keycode == wx.WXK_PAGEUP):#c-u
             self.win.vertical_scroll(-20)
-            self.prev_cmd = [True, False, [85]]
+            self.prev_cmd = 'self.win.vertical_scroll(-20)'
         elif (ctrl_down and keycode == 68) or\
              (not ctrl_down and keycode == wx.WXK_PAGEDOWN) or\
              keycode == wx.WXK_SPACE:#c-d
             self.win.vertical_scroll(20)
-            self.prev_cmd = [True, False, [68]]
-        elif (keycode == wx.WXK_RETURN):
+            self.prev_cmd = 'self.win.vertical_scroll(20)'
+        #elif (rawkeycode > 96 and rawkeycode < 123) or\
+        elif keycode > 64 and keycode < 91:#press letters
             text = self.statusbar.GetStatusText()
-            if text:
-                self.search_text = str(text[1:])
-                if text[0] == '/':
-                    self.search(self.search_text, 1)
-                    self.ori = 1
-                elif text[0] == '?':
-                    self.search(self.search_text, -1)
-                    self.ori = -1
-            self.prev_key = []
-            self.prev_num = []
-            self.statusbar.SetStatusText('')
-        elif (rawkeycode > 96 and rawkeycode < 123) or\
-             (rawkeycode > 64 and rawkeycode < 91):#press letters
-            text = str(self.statusbar.GetStatusText())
-            if text and (text[0] == '/' or text[0] == '?'): #search 
-                self.statusbar.SetStatusText(text+chr(rawkeycode))
-            elif len(self.prev_key) > 0: #check if it's part of a cmd
+            if len(self.prev_key) > 0: #check if it's part of a cmd
                 if self.prev_key[0] == 103:#prev is g
                     if rawkeycode == 103:#press another g
                         if len(self.prev_num) == 0:#no nums
                             self.marks[96] = (self.current_page_idx, 
                                               self.scale, 
                                               self.win.GetViewStart())
-                            self.win.go_home()
-                            #self.prev_cmd = [False, False, [103, 103]]
+                            self.win.Scroll(-1, 0)
+                            #self.prev_cmd = 'self.win.Scroll(-1, 0)'
+                            self.statusbar.SetStatusText('')
                             self.prev_key = []
                         else:
                             self.marks[96] = (self.current_page_idx, 
@@ -469,38 +459,53 @@ class DocViewer(wx.Frame):
                             self.change_page(self.get_num()-1)#it's num gg
                             self.prev_key = []
                             self.prev_num = []
+                            self.statusbar.SetStatusText('')
                     else:
                         self.prev_key = []
                         self.prev_num = []
+                        self.statusbar.SetStatusText('')
                 elif self.prev_key[0] == 90:#prev is Z
                     if rawkeycode == 90:#another Z
                         self.on_close(None)
                     else:
                         self.prev_key = []
+                        self.statusbar.SetStatusText('')
                 elif self.prev_key[0] == 109:#prev is m
                     self.marks[rawkeycode] = (self.current_page_idx,
                                               self.scale, 
                                               self.win.GetViewStart())
                     self.prev_key = []
+                    self.statusbar.SetStatusText('')
                 else:#prev is ' or `
                     self.retrive_mark(rawkeycode)
                     self.prev_key = []
+                    self.statusbar.SetStatusText('')
             elif len(self.prev_num) > 0:#no prev key, has nums
                 if rawkeycode == 106:#press j
-                    self.change_page(self.current_page_idx + self.get_num())
-                    self.prev_cmd = [False, False, self.prev_num+[106]]
+                    self.num = self.get_num()
+                    self.change_page(self.current_page_idx + self.num)
+                    self.prev_cmd = 'self.change_page(self.current_page_idx+\
+                                    self.num)'
+                    self.statusbar.SetStatusText('')
                     self.prev_num = []
                 elif rawkeycode == 107:#press k
-                    self.change_page(self.current_page_idx - self.get_num())
-                    self.prev_cmd = [False, False, self.prev_num+[107]]
+                    self.num = self.get_num()
+                    self.change_page(self.current_page_idx - self.num)
+                    self.prev_cmd = 'self.change_page(self.current_page_idx-\
+                                    self.num)'
+                    self.statusbar.SetStatusText('')
                     self.prev_num = []
                 elif rawkeycode == 103:#press g
                     self.prev_key.append(103)
+                    self.statusbar.SetStatusText(self.statusbar.GetStatusText()+\
+                                                 'g')
                 else:
+                    self.statusbar.SetStatusText('')
                     self.prev_num = []
             elif rawkeycode == 103 or rawkeycode == 90 or rawkeycode == 109: 
             #no prev key, no nums, press g or Z or m
                 self.prev_key.append(rawkeycode)
+                self.statusbar.SetStatusText(chr(rawkeycode))
             elif rawkeycode == 114: # press r
                 self.on_refresh(None)
             elif rawkeycode == 119: # press w
@@ -509,19 +514,19 @@ class DocViewer(wx.Frame):
                 self.marks[96] = (self.current_page_idx, 
                                   self.scale, 
                                   self.win.GetViewStart())
-                self.win.go_end()
+                self.win.Scroll(-1, self.win.GetScrollRange(wx.VERTICAL))
             elif rawkeycode == 106:#press j
                 self.win.vertical_scroll(1)
-                self.prev_cmd = [False, False, [106]]
+                self.prev_cmd = 'self.win.vertical_scroll(1)'
             elif rawkeycode == 107:#press k
                 self.win.vertical_scroll(-1)
-                self.prev_cmd = [False, False, [107]]
+                self.prev_cmd = 'self.win.vertical_scroll(-1)'
             elif rawkeycode == 104:#press h
                 self.win.horizontal_scroll(-1)
-                self.prev_cmd = [False, False, [104]]
+                self.prev_cmd = 'self.win.horizontal_scroll(-1)'
             elif rawkeycode == 108:#press l
                 self.win.horizontal_scroll(1)
-                self.prev_cmd = [False, False, [108]]
+                self.prev_cmd = 'self.win.horizontal_scroll(1)'
             elif rawkeycode == 110:#press n
                 self.search_next(1)
             elif rawkeycode == 78:#press N
@@ -537,47 +542,37 @@ class DocViewer(wx.Frame):
         elif rawkeycode == 96 or rawkeycode == 39:#press ' or `
             if len(self.prev_num) > 0:#has num
                 self.prev_num = []
+                self.statusbar.SetStatusText('')
             elif len(self.prev_key) == 0:#no num, no key
                 self.prev_key.append(96)
+                self.statusbar.SetStatusText(chr(rawkeycode))
             elif self.prev_key[0] == 96:#prev is '
                 self.retrive_mark(96)
                 self.prev_key = []
+                self.statusbar.SetStatusText('')
             else:#prev is others
                 self.prev_key = []
+                self.statusbar.SetStatusText('')
         elif keycode == wx.WXK_DOWN:
             self.win.vertical_scroll(1)
-            self.prev_cmd = [False, False, [106]]
         elif keycode == wx.WXK_UP:
             self.win.vertical_scroll(-1)
-            self.prev_cmd = [False, False, [107]]
-        elif keycode == wx.WXK_LEFT:
-            self.win.horizontal_scroll(-1)
-            self.prev_cmd = [False, False, [104]]
-        elif keycode == wx.WXK_RIGHT:
-            self.win.horizontal_scroll(1)
-            self.prev_cmd = [False, False, [108]]
-        elif keycode == wx.WXK_HOME:
-            self.win.go_home()
-        elif keycode == wx.WXK_END:
-            self.win.go_end()
-        elif shift_down and keycode == 61:
+        elif rawkeycode == 43:# +, zoom in
             self.on_zoom_in(None)
-            self.prev_cmd = [False, True, 61]
-        elif keycode == 45:
+            self.prev_cmd = 'self.on_zoom_in(None)'
+        elif rawkeycode == 45:# -, zoom out
             self.on_zoom_out(None)
-            self.prev_cmd = [False, False, 45]
+            self.prev_cmd = 'self.on_zoom_out(None)'
         elif keycode == wx.WXK_ESCAPE:
             self.prev_key = []
             self.prev_num = []
             self.statusbar.SetStatusText('', 0)
         elif keycode == 46: #. repeat cmd
-            for key in self.prev_cmd[2]:
-                self.handle_keys(key, key, self.prev_cmd[0], self.prev_cmd[1])
-        elif rawkeycode == 47: # press /
-            self.statusbar.SetStatusText('/', 0)
-        elif rawkeycode == 63: #press ?
-            self.statusbar.SetStatusText('?', 0)
-
+            if len(self.prev_cmd) > 0:
+                eval(self.prev_cmd)
+        elif rawkeycode == 47 or rawkeycode == 63: # press /
+            self.new_search = True
+            self.statusbar.SetStatusText(chr(rawkeycode), 0)
 
     def get_num(self):
         page = ''
@@ -595,7 +590,7 @@ class DocViewer(wx.Frame):
                 self.set_current_page(page_idx)
             self.scale = scale
             self.win.set_scale(scale)
-            self.set_zoom_tools()
+            self.update_statusbar()
             self.win.Scroll(point[0], point[1])
             self.marks[96] = mark
 
