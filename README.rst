@@ -3,7 +3,7 @@ README for rbook
 
 Dependencies
 ------------
-rbook requires `wxPython <http://wxpython.org>`_(version >= 2.8) and `python-fitz <https://github.com/rk700/python-fitz>`_
+rbook requires `wxPython <http://wxpython.org>`_ (version >= 2.8) and `python-fitz <https://github.com/rk700/python-fitz>`_
 
 
 Install
