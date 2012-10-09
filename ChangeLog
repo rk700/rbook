@@ -1,0 +1,10 @@
+2012-10-09 version 0.1.2
+
+* For .pdf rendering, replace pypoppler by python-fitz, which also supports .cbz and .xps
+* Support search and outline
+* Sync dir
+
+
+2012-9-12 version 0.1.0
+
+* Initial version
