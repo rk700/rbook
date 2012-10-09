@@ -99,12 +99,9 @@ class MainFrame(wx.Frame):
         if os.path.exists(self.configfile):
             f = open(self.configfile)
             self.lines = f.readlines()
-            newfile = get_newfile(self.lines[0].strip(), 
-                                  float(self.lines[1].strip()))
             f.close()
         else:
-            self.lines = ['\n']*2
-            newfile = []
+            self.lines = ['0\n', '\n', '0\n', str(time.time())]
 
 
         self.CreateStatusBar()
@@ -136,15 +133,16 @@ class MainFrame(wx.Frame):
         file_menu.AppendItem(menu_open)
         menu_exit = file_menu.Append(wx.ID_EXIT, "Exit", help='Exit rbook')
 
-        view_menu = wx.Menu()
-        menu_search = view_menu.Append(wx.ID_FIND, "Search",
+        edit_menu = wx.Menu()
+        menu_search = edit_menu.Append(wx.ID_FIND, 
                                        help='Search file in all the categories')
+        menu_config = edit_menu.Append(wx.ID_PREFERENCES)
 
         about_menu = wx.Menu()
         menu_about = about_menu.Append(wx.ID_ABOUT, "About rbook")
         
         menubar.Append(file_menu, "File")
-        menubar.Append(view_menu, "View")
+        menubar.Append(edit_menu, "Edit")
         menubar.Append(about_menu, "About")
         
         self.SetMenuBar(menubar)
@@ -189,8 +187,10 @@ class MainFrame(wx.Frame):
         self.file_list = FileList(split_win, -1, self.dir_tree)
         self.dir_tree.set_file_list(self.file_list)
 
-        for newfile_ele in newfile:
-            self.dir_tree.GetPyData(self.dir_tree.uncategorized).append(newfile_ele)
+        if int(self.lines[2].strip()):
+            newfile = get_newfile(self.lines[1].strip(), float(self.lines[3].strip()))
+            for newfile_ele in newfile:
+                self.dir_tree.GetPyData(self.dir_tree.uncategorized).append(newfile_ele)
 
 
         split_win.SetMinimumPaneSize(180)
@@ -217,7 +217,8 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self.on_quick_add, menu_quickadd)
         self.Bind(wx.EVT_MENU, self.on_open, menu_open)
         self.Bind(wx.EVT_MENU, self.on_exit, menu_exit)
-        self.Bind(wx.EVT_MENU, lambda event:SearchDialog(self, -1, 'Search', (385, 230)), menu_search)
+        self.Bind(wx.EVT_MENU, lambda event:SearchDialog(self, -1, 'Find', (385, 230)), menu_search)
+        self.Bind(wx.EVT_MENU, self.on_config, menu_config)
         self.Bind(wx.EVT_MENU, on_about, menu_about)
         self.search.Bind(wx.EVT_TEXT_ENTER, self.on_search_title_author)
         self.search.Bind(wx.EVT_SEARCHCTRL_SEARCH_BTN, 
@@ -225,6 +226,11 @@ class MainFrame(wx.Frame):
         #self.search.Bind(wx.EVT_SEARCHCTRL_CANCEL_BTN, self.on_search_cancel)
         self.Bind(wx.EVT_CLOSE, self.on_close)
         
+    def on_config(self, event):
+        dialog = ConfigFrame(self, -1, 'Preference', (400, 260))
+        dialog.Show()
+        
+
     def on_close(self, event):
         # store page idx for those unclosed viewers
         for doc in self.file_list.doc_list:
@@ -243,7 +249,7 @@ class MainFrame(wx.Frame):
 
         self.write_xml()
 
-        self.lines[1] = str(time.time())
+        self.lines[3] = str(time.time())
         f = open(self.configfile, 'w')
         f.writelines(self.lines)
         
@@ -256,12 +262,12 @@ class MainFrame(wx.Frame):
         self.on_close(None)
 
     def on_sync(self, event):
-        newfiles = get_newfile(self.lines[0].strip(), float(self.lines[1].strip()))
+        newfiles = get_newfile(self.lines[1].strip(), float(self.lines[3].strip()))
         for newfile in newfiles:
             if self.dir_tree.GetSelection() == self.dir_tree.uncategorized:
                 self.file_list.append_file_ele(newfile, self.dir_tree.uncategorized)
             self.dir_tree.GetPyData(self.dir_tree.uncategorized).append(newfile)
-        self.lines[1] = str(time.time())
+        self.lines[3] = str(time.time())
 
     def on_open(self, event):
         dlg = wx.FileDialog(self, "Open file", "", "", "*.pdf", wx.OPEN)

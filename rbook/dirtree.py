@@ -18,6 +18,7 @@
 # You should have received a copy of the GNU General Public License
 # along with rbook.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
 import xml.etree.cElementTree as ET
 
 import wx
@@ -34,7 +35,7 @@ class MainDirTree(DirTree):
         root_ele = element_tree.getroot()
         self.quickvisit = []
 
-        self.SetPyData(self.root_dir, root_ele)
+        self.SetItemData(self.root_dir, wx.TreeItemData(root_ele))
         self.init_dir_name(self.root_dir, root_ele)
         self.Bind(wx.EVT_RIGHT_DOWN, self.on_right_down)
         self.Bind(wx.EVT_KEY_DOWN, self.on_key_down)
@@ -57,7 +58,7 @@ class MainDirTree(DirTree):
                                   wx.TreeItemIcon_Normal)
                 self.SetItemImage(child_dir, self.folder_open_idx, 
                                   wx.TreeItemIcon_Expanded)
-                self.SetPyData(child_dir, child_ele)
+                self.SetItemData(child_dir, wx.TreeItemData(child_ele))
                 # the dir is in qv bar
                 if qv_pos > 0:
                     self.quickvisit.append(('d', child_dir, qv_pos))
@@ -69,7 +70,7 @@ class MainDirTree(DirTree):
     def on_sel_changed(self, event):
         item = event.GetItem()
         if item.IsOk():
-            dir_ele = self.GetPyData(item)
+            dir_ele = self.GetItemData(item).GetData()
             self.file_list.DeleteAllItems()
             self.file_list.show_files(dir_ele.findall('file'), [item])
 
@@ -103,12 +104,12 @@ class MainDirTree(DirTree):
     def on_new_dir(self, event):
         new_dir_ele = ET.Element('dir', name='New Category', quick_visit='0')
         current_dir = self.GetSelection()
-        self.GetPyData(current_dir).append(new_dir_ele)
+        self.GetItemData(current_dir).GetData().append(new_dir_ele)
         new_dir = self.AppendItem(current_dir, 'New Category')
         self.SetItemImage(new_dir, self.folder_idx, wx.TreeItemIcon_Normal)
         self.SetItemImage(new_dir, self.folder_open_idx, 
                           wx.TreeItemIcon_Expanded)
-        self.SetPyData(new_dir, new_dir_ele)
+        self.SetItemData(new_dir, wx.TreeItemData(new_dir_ele))
         self.Expand(current_dir)
         self.SelectItem(new_dir)
         self.EditLabel(new_dir)
@@ -121,8 +122,8 @@ class MainDirTree(DirTree):
         if current_dir.IsOk() and current_dir != self.GetRootItem()\
                               and current_dir != self.uncategorized:
             parent_dir = self.GetItemParent(current_dir) 
-            parent_dir_ele = self.GetPyData(parent_dir)
-            current_dir_ele = self.GetPyData(current_dir)
+            parent_dir_ele = self.GetItemData(parent_dir).GetData()
+            current_dir_ele = self.GetItemData(current_dir).GetData()
             self.del_dir_and_qv(current_dir, current_dir_ele)
             self.traverse(current_dir, self.del_dir_and_qv)
             parent_dir_ele.remove(current_dir_ele)
@@ -130,7 +131,7 @@ class MainDirTree(DirTree):
 
     def del_dir_and_qv(self, current_dir, info=None):
         #check if the dir is in qv_bar
-        current_dir_ele = self.GetPyData(current_dir)
+        current_dir_ele = self.GetItemData(current_dir).GetData()
         if int(current_dir_ele.get('quick_visit')) > 0:
             data, index = self.main_win.find_qv_by(lambda d:d[1], 
                                                    current_dir, 'd')
@@ -138,6 +139,8 @@ class MainDirTree(DirTree):
             del self.main_win.qv_bar_data[index]
         #check if the file under dir is in qv_bar
         for file_ele in current_dir_ele.findall('file'):
+            if int(self.main_win.lines[0].strip()):
+                os.remove(file_ele.get('path'))
             if int(file_ele.get('quick_visit')) > 0:
                 data, index = self.main_win.find_qv_by(lambda d:d[1], 
                                                        file_ele, 'f')
@@ -149,7 +152,7 @@ class MainDirTree(DirTree):
         if not event.IsEditCancelled():
             new_name = event.GetLabel()
             current_dir = self.GetSelection()
-            current_dir_ele = self.GetPyData(current_dir)
+            current_dir_ele = self.GetItemData(current_dir).GetData()
             current_dir_ele.set('name', new_name)
 
 ###### setlabel not work?? ######
@@ -178,8 +181,8 @@ class MainDirTree(DirTree):
 
     def move_to(self, target_dir):
         current_dir = self.GetSelection()
-        current_dir_ele = self.GetPyData(current_dir)
-        target_dir_ele = self.GetPyData(target_dir)
+        current_dir_ele = self.GetItemData(current_dir).GetData()
+        target_dir_ele = self.GetItemData(target_dir).GetData()
 
         #check if the target is child of the current dir
         target_is_child = False
@@ -192,7 +195,7 @@ class MainDirTree(DirTree):
             new_root_dir, stop = self.update_dir_and_qv(current_dir, target_dir)
             self.traverse(current_dir, self.update_dir_and_qv, new_root_dir)
 
-            parent_dir_ele = self.GetPyData(self.GetItemParent(current_dir))
+            parent_dir_ele = self.GetItemData(self.GetItemParent(current_dir)).GetData()
             parent_dir_ele.remove(current_dir_ele)
             target_dir_ele.append(current_dir_ele)
 
@@ -202,13 +205,13 @@ class MainDirTree(DirTree):
     def update_dir_and_qv(self, child_dir, new_root_dir):
     # when moving dir, check if it's in qv_bar; 
     # if so, assign the new addr of dir to the qv tool
-        child_dir_ele = self.GetPyData(child_dir)
+        child_dir_ele = self.GetItemData(child_dir).GetData()
         new_child_dir = self.AppendItem(new_root_dir, child_dir_ele.get('name'))
         self.SetItemImage(new_child_dir, self.folder_idx, 
                           wx.TreeItemIcon_Normal)
         self.SetItemImage(new_child_dir, self.folder_open_idx, 
                           wx.TreeItemIcon_Expanded)
-        self.SetPyData(new_child_dir, child_dir_ele)
+        self.SetItemData(new_child_dir, wx.TreeItemData(child_dir_ele))
 
         # if the dir is in qv bar, set it's reference to the new dir, 
         # and update the tool longhelp
@@ -251,7 +254,7 @@ class MainDirTree(DirTree):
     def search_inode(self, current_dir, info):
         # info[0] is inode, info[1] is [current_dir, file_ele]
         #i = 0
-        current_dir_ele = self.GetPyData(current_dir)
+        current_dir_ele = self.GetItemData(current_dir).GetData()
         for file_ele in current_dir_ele.findall('file'):
             if file_ele.get('inode') == info[0]:
                 info[1][0] = current_dir
@@ -263,7 +266,7 @@ class MainDirTree(DirTree):
 
     def search_inodes(self, current_dir, info):
     # info[0] is file_inodes, info[1] is file_names, info[2] is file_paths
-        current_dir_ele = self.GetPyData(current_dir)
+        current_dir_ele = self.GetItemData(current_dir).GetData()
         for file_ele in current_dir_ele.findall('file'):
             n_inodes = len(info[0])
             inode = file_ele.get('inode')
@@ -281,7 +284,7 @@ class MainDirTree(DirTree):
         # info[0] is the text, 
         # info[1] is the list to save found file_eles,
         # info[2] is the list to save their dirs
-        current_dir_ele = self.GetPyData(current_dir)
+        current_dir_ele = self.GetItemData(current_dir).GetData()
         for file_ele in current_dir_ele.findall('file'):
             if file_ele.get('title').find(info[0]) != -1 or\
                file_ele.get('author').find(info[0]) != -1:
@@ -290,7 +293,7 @@ class MainDirTree(DirTree):
         return (info, False)
 
     def search(self, current_dir, info):
-        current_dir_ele = self.GetPyData(current_dir)
+        current_dir_ele = self.GetItemData(current_dir).GetData()
         for file_ele in current_dir_ele.findall('file'):
             title = info[0]
             author = info[1]

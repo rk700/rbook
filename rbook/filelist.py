@@ -176,6 +176,8 @@ class FileList(ULC.UltimateListCtrl, listmix.ColumnSorterMixin):
 
     def delete_item_and_qv(self, item):
         file_ele = self.GetItemPyData(item)[0]
+        if int(self.main_win.lines[0].strip()):
+            os.remove(file_ele.get('path'))
         #check if the file in in qv_bar
         if int(file_ele.get('quick_visit')) > 0:
             data, index = self.main_win.find_qv_by(lambda d:d[1], file_ele, 'f')
