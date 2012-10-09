@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+#-*- coding: utf8 -*-
 #
 # Copyright (C) 2012 Ruikai Liu <lrk700@gmail.com>
 #
@@ -17,8 +18,104 @@
 
 from datetime import datetime
 import xml.etree.cElementTree as ET
+import os
 
 import wx
+
+class ConfigFrame(wx.Frame):
+    def __init__(self, parent, wxid, title, size):
+        space = 10
+        wx.Frame.__init__(self, parent, wxid, title, size=size)
+        self.parent = parent
+
+        self.cb1 = wx.CheckBox(self, -1, 'When deleting, '\
+                                         'also delete the original file')
+        self.cb1.SetValue(int(self.parent.lines[0].strip()))
+        key2 = wx.StaticText(self, -1, 'Set directory to be monitored:')
+        self.entry2 = wx.TextCtrl(self, -1, size=(250, -1))
+        #if not self.parent.lines[1].strip() == '':
+        self.entry2.SetValue(self.parent.lines[1].strip())
+        self.cb2 = wx.CheckBox(self, -1, 'Automatically sync at start')
+        self.cb2.SetValue(int(self.parent.lines[2].strip()))
+
+        button_select = wx.Button(self, wx.ID_OPEN)
+        button_cancel = wx.Button(self, wx.ID_CANCEL)
+        button_ok = wx.Button(self, wx.ID_OK)
+        button_ok.SetDefault()
+        self.Bind(wx.EVT_BUTTON, self.on_select, button_select)
+        self.Bind(wx.EVT_BUTTON, self.on_cancel, button_cancel)
+        self.Bind(wx.EVT_BUTTON, self.on_ok, button_ok)
+
+        hbox = wx.BoxSizer(wx.HORIZONTAL)
+        hbox.Add(button_cancel, 0, wx.RIGHT, 10)
+        hbox.Add(button_ok, 0)
+
+        hbox1 = wx.BoxSizer(wx.HORIZONTAL)
+        hbox1.Add(self.entry2, 1, wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, 20)
+        hbox1.Add(button_select, 0, wx.TOP | wx.RIGHT, 20)
+        
+        border = wx.BoxSizer(wx.VERTICAL)
+        border.Add(self.cb1, 0, wx.ALL, 20)
+        border.Add(key2, 0, wx.TOP | wx.LEFT | wx.RIGHT, 20)
+        border.Add(hbox1, 0, wx.EXPAND)
+        border.Add(self.cb2, 0, wx.TOP | wx.LEFT | wx.RIGHT, 20)
+        border.Add(hbox, 0, wx.ALIGN_RIGHT | wx.ALL, 20)
+        self.SetSizer(border)
+        self.SetAutoLayout(True)
+
+        self.Show()
+
+    def on_select(self, event):
+        dialog = wx.DirDialog(self, 'Choose a directory') 
+        if dialog.ShowModal() == wx.ID_OK:
+            dirpath = dialog.GetPath()
+            self.entry2.SetValue(dirpath)
+    
+
+    def on_cancel(self, event):
+        self.Destroy()
+
+    def on_ok(self, event):
+        delete_origin = int(self.cb1.GetValue())
+        self.parent.lines[0] = str(delete_origin)+'\n'
+        dirpath = self.entry2.GetValue()
+        self.parent.lines[1] = dirpath+'\n'
+        auto_sync = int(self.cb2.GetValue())
+        self.parent.lines[2] = str(auto_sync)+'\n'
+
+        if (not dirpath == '') or auto_sync:
+            if not os.path.exists(dirpath):
+                dialog = wx.MessageDialog(self, 
+                                          "'%s' is not a valid directory" % dirpath,
+                                          'Error',
+                                          wx.OK | wx.ICON_EXCLAMATION)
+                dialog.ShowModal()
+                dialog.Destroy()
+            else:
+                self.Destroy()
+        else:
+            self.Destroy()
+
+
+
+def get_newfile(path, time):
+    newfile = []
+    if os.path.exists(path):
+        for dirpaths, dirnames, filenames in os.walk(path):
+            for filename in filenames:
+                filepath = os.path.join(dirpaths, filename)
+                file_suf = filename[-3:].lower()
+                if (file_suf == 'pdf' or file_suf == 'cbz' or file_suf == 'xps') and \
+                   os.path.getctime(filepath) > time:
+                    file_ele = ET.Element('file', title=filename[0:-4], author='', 
+                                          current_page='0', path=filepath, 
+                                          create_time=datetime.now().
+                                          strftime('%b %d %Y %H:%M:%S'), 
+                                          inode=str(os.stat(filepath).st_ino), 
+                                          quick_visit='0')
+                    newfile.append(file_ele)
+
+    return newfile
 
 
 class RootNoFileDialog(wx.MessageDialog):
@@ -275,10 +372,9 @@ class InfoFrame(wx.Frame):
 
         key2 = wx.StaticText(self, -1, 'Author:')
         author = self.file_ele.get('author')
-        if author == '':
-            self.entry2 = wx.TextCtrl(self, -1, size=(200, -1)) 
-        else:
-            self.entry2 = wx.TextCtrl(self, -1, author, size=(200, -1))
+        self.entry2 = wx.TextCtrl(self, -1, size=(200, -1)) 
+        if not author == '':
+            self.entry2.SetValue(author)
 
         key3 = wx.StaticText(self, -1, 'Path:')
         entry3 = wx.StaticText(self, -1, self.file_ele.get('path'))

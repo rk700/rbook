@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+#-*- coding: utf8 -*-
 #
 # Copyright (C) 2012 Ruikai Liu <lrk700@gmail.com>
 #
@@ -18,6 +19,7 @@
 # along with rbook.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import subprocess
 
 import wx
 import wx.lib.agw.ultimatelistctrl as ULC
@@ -86,7 +88,22 @@ class FileList(ULC.UltimateListCtrl, listmix.ColumnSorterMixin):
         self.Select(index)
 
     def on_open(self, event):
-        doc = DocViewer(self, self.GetItemPyData(self.GetFirstSelected())[0])
+        try:
+            doc = DocViewer(self, self.GetItemPyData(self.GetFirstSelected())[0])
+            self.doc_list.append(doc)
+        except IOError:
+            file_ele = self.GetItemPyData(self.GetFirstSelected())[0]
+            dialog = wx.MessageDialog(self, 
+                                      'Cannot open document %s at %s' % 
+                                            (file_ele.get('title'), 
+                                             file_ele.get('path')),
+                                      'Error',
+                                      wx.OK | wx.ICON_EXCLAMATION)
+            dialog.ShowModal()
+            dialog.Destroy()
+                                      
+    def open_file_ele(self, file_ele):
+        doc = DocViewer(self, file_ele)
         self.doc_list.append(doc)
 
     def on_dclick(self, event):
@@ -148,12 +165,19 @@ class FileList(ULC.UltimateListCtrl, listmix.ColumnSorterMixin):
             new_item = func(item)
             item = self.GetNextItem(new_item, ULC.ULC_NEXT_ALL,
                                     ULC.ULC_STATE_SELECTED)
-
+    def search_inode(self, inode):
+        item = self.GetNextItem(-1, ULC.ULC_NEXT_ALL)
+        while item != -1:
+            if self.GetItemPyData(item)[0].get('inode') == inode:
+                return item
+            item = self.GetNextItem(item, ULC.ULC_NEXT_ALL)
     def on_delete(self, event):
         self.traverse_selected(self.delete_item_and_qv)
 
     def delete_item_and_qv(self, item):
         file_ele = self.GetItemPyData(item)[0]
+        if int(self.main_win.lines[0].strip()):
+            os.remove(file_ele.get('path'))
         #check if the file in in qv_bar
         if int(file_ele.get('quick_visit')) > 0:
             data, index = self.main_win.find_qv_by(lambda d:d[1], file_ele, 'f')
@@ -181,9 +205,9 @@ class FileList(ULC.UltimateListCtrl, listmix.ColumnSorterMixin):
         dlg = wx.FileDialog(self, message='Choose a program', 
                             defaultDir=os.getcwd())
         if dlg.ShowModal() == wx.ID_OK:
-            os.system(
-                dlg.GetPath()+' '+
-                self.GetItemPyData(self.GetFirstSelected())[0].get('path')+' &')
+            subprocess.Popen((dlg.GetPath(), 
+                             self.GetItemPyData(
+                                 self.GetFirstSelected())[0].get('path')))
         dlg.Destroy()
 
     def move_to(self, target_dir):
