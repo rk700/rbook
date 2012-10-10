@@ -104,8 +104,9 @@ def get_newfile(path, time):
         for dirpaths, dirnames, filenames in os.walk(path):
             for filename in filenames:
                 filepath = os.path.join(dirpaths, filename)
-                file_suf = filename[-3:].lower()
-                if (file_suf == 'pdf' or file_suf == 'cbz' or file_suf == 'xps') and \
+                file_suf = os.path.splitext(filename)[1].lower()
+                if (file_suf == 'pdf' or file_suf == 'cbz' or \
+                    file_suf == 'xps' or file_suf == 'djvu') and \
                    os.path.getctime(filepath) > time:
                     file_ele = ET.Element('file', title=filename[0:-4], author='', 
                                           current_page='0', path=filepath, 

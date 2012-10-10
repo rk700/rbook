@@ -25,15 +25,17 @@ import wx
 from fitz import *
 
 class DocScroll(wx.ScrolledWindow):
-    def __init__(self, parent, main_win, current_page):
+    def __init__(self, parent, main_win, doc, current_page_idx):
         self.scroll_unit = 10.0
         wx.ScrolledWindow.__init__(self, parent)
         self.parent = main_win
+        self.doc = doc
         self.ctx = self.parent.ctx
         self.vscroll_wid = wx.SystemSettings_GetMetric(wx.SYS_VSCROLL_X)
+        current_page = self.doc.load_page(current_page_idx)
         width = current_page.bound_page().get_width()
         w_width, w_height = self.parent.GetSize()
-        if not self.parent.outline is None:
+        if hasattr(main_win, 'split_win'):
             w_width = w_width - 200 - self.parent.split_win.GetSashSize()
         scale = round((w_width-self.vscroll_wid)/width-0.005, 2)
         if scale > self.parent.min_scale and scale < self.parent.max_scale:
@@ -42,7 +44,7 @@ class DocScroll(wx.ScrolledWindow):
             self.scale = 1.0
 
         self.panel = wx.Panel(self, -1)
-        self.set_current_page(current_page, True)
+        self.set_current_page(current_page_idx, True)
        
         self.panel.Bind(wx.EVT_PAINT, self.on_paint)
         self.Bind(wx.EVT_SIZE, self.on_size)
@@ -69,6 +71,7 @@ class DocScroll(wx.ScrolledWindow):
             self.panel.SetCursor(wx.StockCursor(wx.CURSOR_HAND))
             self.link_context = (link.get_kind(), \
                                  link.get_page(), \
+                                 link.get_page_flags(), \
                                  link.get_page_lt(), \
                                  link.get_uri())
         else:
@@ -80,16 +83,19 @@ class DocScroll(wx.ScrolledWindow):
             if self.link_context[0] == FZ_LINK_GOTO:
                 # after change page, link_context becomes None,
                 # so we need to record the pos
-                pos = self.link_context[2]
+                pos = self.link_context[3]
+                flag = self.link_context[2]
                 self.parent.change_page(self.link_context[1])
-                pos = self.trans.transform_point(pos)
-                self.Scroll(-1, pos.y/self.scroll_unit)
+                if flag & fz_link_flag_t_valid:
+                    pos = self.trans.transform_point(pos)
+                    self.Scroll(-1, (self.height-pos.y)/self.scroll_unit)
             elif self.link_context[0] == FZ_LINK_URI:
-                subprocess.Popen(('xdg-open', self.link_context[3]))
+                subprocess.Popen(('xdg-open', self.link_context[4]))
 
-    def fit_width_scale(self, current_page):
-        width = current_page.bound_page().get_width()
-        if self.parent.outline is None or not self.parent.split_win.IsSplit():
+    def fit_width_scale(self):
+        width = self.current_page.bound_page().get_width()
+
+        if not (hasattr(self.parent, 'split_win') and self.parent.split_win.IsSplit()):
             w_width, w_height = self.parent.GetSize()
         else:
             w_width, w_height = self.parent.split_win.GetWindow2().GetSize()
@@ -98,6 +104,7 @@ class DocScroll(wx.ScrolledWindow):
             self.scale = scale
         else:
             self.scale = 1.0
+        self.set_scale(scale)
 
     def on_paint(self, event):
         dc = wx.BufferedPaintDC(self.panel, self.buffer, wx.BUFFER_VIRTUAL_AREA)
@@ -119,8 +126,8 @@ class DocScroll(wx.ScrolledWindow):
                            self.buffer,
                            wx.BUFFER_VIRTUAL_AREA)
 
-    def set_current_page(self, current_page, draw):
-        self.current_page = current_page
+    def set_current_page(self, current_page_idx, draw):
+        self.current_page = self.doc.load_page(current_page_idx)
         self.set_page_size()
 
         self.text_sheet = new_text_sheet(self.ctx)
@@ -128,9 +135,9 @@ class DocScroll(wx.ScrolledWindow):
 
         self.display_list = new_display_list(self.ctx)
         mdev = new_list_device(self.display_list)
-        current_page.run_page(mdev, fz_identity, None)
+        self.current_page.run_page(mdev, fz_identity, None)
 
-        self.links = current_page.load_links()
+        self.links = self.current_page.load_links()
         self.link_context = None
 
         tdev = new_text_device(self.text_sheet, self.text_page)

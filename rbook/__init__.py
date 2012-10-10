@@ -1,2 +1,2 @@
-#!/bin/bash/env python2
+#!/bin/bash/env python
 #-*- coding: utf8 -*-

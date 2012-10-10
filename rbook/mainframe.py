@@ -270,9 +270,9 @@ class MainFrame(wx.Frame):
         self.lines[3] = str(time.time())
 
     def on_open(self, event):
-        dlg = wx.FileDialog(self, "Open file", "", "", "*.pdf", wx.OPEN)
+        dlg = wx.FileDialog(self, "Open file", "", "", "PDF files (*.pdf)|*.pdf|CBZ files (*.cbz)|*.cbz|XPS files (*.xps)|*.xps|Djvu files (*.djvu)|*.djvu", wx.OPEN)
         if dlg.ShowModal() == wx.ID_OK:
-            file_name = dlg.GetFilename()[0:-4]
+            file_name = os.path.splitext(dlg.GetFilename())[0]
             file_path = dlg.GetPath()
             file_inode = str(os.stat(file_path).st_ino)
             info = self.dir_tree.search_file_inode(file_inode, 
@@ -305,8 +305,7 @@ class MainFrame(wx.Frame):
         if self.dir_tree.GetSelection() == self.dir_tree.GetRootItem():
             RootNoFileDialog(self)
         else:
-            dlg = wx.FileDialog(self, 'Quick add', "", "", "*.pdf", 
-                                wx.OPEN | wx.MULTIPLE)
+            dlg = wx.FileDialog(self, 'Quick add', "", "", "PDF files (*.pdf)|*.pdf|CBZ files (*.cbz)|*.cbz|XPS files (*.xps)|*.xps|Djvu files (*.djvu)|*.djvu", wx.OPEN | wx.MULTIPLE)
             if dlg.ShowModal() == wx.ID_OK:
                 file_names = [name[0:-4] for name in dlg.GetFilenames()]
                 file_paths = dlg.GetPaths()
@@ -331,9 +330,9 @@ class MainFrame(wx.Frame):
             dlg.Destroy()
 
     def on_add(self, event):
-        dlg = wx.FileDialog(self, 'Add', "", "", "*.pdf", wx.OPEN)
+        dlg = wx.FileDialog(self, 'Add', "", "", "PDF files (*.pdf)|*.pdf|CBZ files (*.cbz)|*.cbz|XPS files (*.xps)|*.xps|Djvu files (*.djvu)|*.djvu", wx.OPEN)
         if dlg.ShowModal() == wx.ID_OK:
-            file_name = dlg.GetFilename()[0:-4]
+            file_name = os.path.splitext(dlg.GetFilename())[0]
             file_path = dlg.GetPath()
             file_inode = str(os.stat(file_path).st_ino)
             info = self.dir_tree.search_file_inode(file_inode, 
