@@ -3,11 +3,11 @@
 from distutils.core import setup
 
 setup(name = 'rbook',
-      version = '0.1.0',
-      description = 'A simple PDF document manager',
+      version = '0.1.3',
+      description = 'A Vim style document viewer',
       classifiers = [
         'Development Status :: 4 - Beta',
-        'Environment :: X11 Applications :: GTK',
+        'Environment :: X11 Applications',
         'Intended Audience :: End Users/Desktop',
         'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
         'Operating System :: POSIX',
@@ -20,5 +20,5 @@ setup(name = 'rbook',
       license = 'GPLv3+',
       packages = ['rbook'],
       scripts = ['bin/rbook'],
-      data_files = [('/usr/share/rbook', ['viewer.pdf'])]
+      data_files = [('/usr/share/rbook', ['manual.pdf'])]
      )

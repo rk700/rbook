@@ -37,7 +37,7 @@ class DocScroll(wx.ScrolledWindow):
         width = current_page.width
         w_width, w_height = self.parent.main_frame.GetSize()
         if parent.show_outline and show_outline:
-            w_width = 600
+            w_width -= 200
         scale = round((w_width-self.vscroll_wid-self.parent.GetSashSize())/width-0.005, 2)
         if scale > self.parent.min_scale and scale < self.parent.max_scale:
             self.scale = scale
@@ -48,41 +48,20 @@ class DocScroll(wx.ScrolledWindow):
         self.set_current_page(current_page_idx, True)
        
         self.panel.Bind(wx.EVT_PAINT, self.on_paint)
-        self.Bind(wx.EVT_SIZE, self.on_size)
+        self.Bind(wx.EVT_SIZE, self.parent.on_size)
         self.Bind(wx.EVT_SCROLLWIN_LINEDOWN, 
-                  lambda event:self.vertical_scroll(1))
+                  lambda event:self.parent.vertical_scroll(1))
         self.Bind(wx.EVT_SCROLLWIN_LINEUP, 
-                  lambda event:self.vertical_scroll(-1))
-        #self.panel.Bind(wx.EVT_KEY_DOWN, self.parent.on_key_down)
+                  lambda event:self.parent.vertical_scroll(-1))
         self.panel.Bind(wx.EVT_KEY_DOWN, lambda event:self.parent.main_frame.handle_keys(event, self.parent))
-        #self.Bind(wx.EVT_KEY_DOWN, self.son_key_down)
-        #self.panel.SetFocus()
-
-#    def pon_key_down(self, event):
-        #print('pnl')
-        #self.parent.on_key_down(event)
-    #def son_key_down(self, event):
-        #print('scl')
-        #self.parent.on_key_down(event)
-    def fit_width_scale(self):
-        width = self.current_page.width
-        if not self.parent.show_outline == 1:
-            w_width, w_height = self.parent.main_frame.GetSize()
-        else:
-            w_width, w_height = self.parent.GetWindow2().GetSize()
-        scale = round((w_width-self.vscroll_wid)/width-0.005, 2)
-        if scale > self.parent.min_scale and scale < self.parent.max_scale:
-            self.scale = scale
-        else:
-            self.scale = 1.0
-        self.set_scale(scale)
 
     def on_paint(self, event):
-        dc = wx.BufferedPaintDC(self.panel, self.buffer, wx.BUFFER_VIRTUAL_AREA)
+        dc = wx.BufferedPaintDC(self.panel, self.buffer)#, wx.BUFFER_VIRTUAL_AREA)
 
     def set_current_page(self, current_page_idx, draw):
         self.hitbbox = []
         self.current_page = self.parent.document.pages[current_page_idx].decode(True)
+        self.orig_width = self.current_page.width
         self.width = int(self.scale*self.current_page.width)
         self.height = int(self.scale*self.current_page.height)
 
@@ -97,7 +76,7 @@ class DocScroll(wx.ScrolledWindow):
                            self.width/self.scroll_unit, 
                            self.height/self.scroll_unit)
         self.Scroll(0, 0)
-        self.put_center()
+        self.parent.put_center(self)
 
         try:
             self.data = self.current_page.render(djvu.decode.RENDER_COLOR, 
@@ -120,8 +99,7 @@ class DocScroll(wx.ScrolledWindow):
             del dc
 
         dc = wx.BufferedDC(wx.ClientDC(self.panel), 
-                           self.buffer,
-                           wx.BUFFER_VIRTUAL_AREA)
+                           self.buffer)
 
     def set_scale(self, scale):
         self.scale = scale
@@ -134,50 +112,6 @@ class DocScroll(wx.ScrolledWindow):
         self.height = scale*self.current_page.height
         self.setup_drawing()
         self.Scroll(int(x*self.width), int(y*self.height))
-
-    def on_size(self, event):
-        scroll_x, scroll_y = self.GetViewStart()
-        self.Scroll(0, 0)
-        self.put_center()
-        self.Scroll(scroll_x, scroll_y)
-
-    def put_center(self):
-        w_width, w_height = self.GetSize()
-        h_move = 0
-        v_move = 0
-        if w_width > self.width:
-            if w_height < self.height:
-                h_move = max(0, w_width-self.vscroll_wid-self.width)/2
-            else:
-                h_move = (w_width-self.width)/2
-        if w_height > self.height:
-            v_move = (w_height-self.height)/2
-        self.panel.Move((h_move, v_move))
-
-    def vertical_scroll(self, move):
-        bottom = int(round((self.GetVirtualSize()[1] - 
-                            self.GetClientSize()[1])/self.scroll_unit))
-        y = self.GetViewStart()[1] + move
-        if y < 0:
-            if self.GetViewStart()[1] > 0:
-                self.Scroll(-1, 0)
-            else:
-                if self.parent.current_page_idx == 0:
-                    pass
-                else:
-                    self.parent.on_prev_page(None)
-                    self.Scroll(0, self.GetScrollRange(wx.VERTICAL))
-        elif y > bottom:
-            if self.GetViewStart()[1] < bottom:
-                self.Scroll(-1, self.GetScrollRange(wx.VERTICAL)) 
-            else:
-                self.parent.on_next_page(None)
-        else:
-            self.Scroll(-1, y)
-
-    def horizontal_scroll(self, move):
-        x = self.GetViewStart()[0] + move
-        self.Scroll(x, -1)
 
     def search(self, text, s):
         hitbbox = []
@@ -267,8 +201,7 @@ class DocScroll(wx.ScrolledWindow):
                 image.SetData(self.invert_rect(self.hitbbox[newhit]))
                 self.buffer = wx.BitmapFromImage(image)
                 dc = wx.BufferedDC(wx.ClientDC(self.panel), 
-                                   self.buffer,
-                                   wx.BUFFER_VIRTUAL_AREA)
+                                   self.buffer)
                 self.Scroll(-1, self.hitbbox[newhit][3]*self.scale/self.scroll_unit)
         return newhit
 

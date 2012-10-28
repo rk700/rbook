@@ -29,6 +29,7 @@ from viewer import DocViewer
 
 class MainFrame(wx.Frame):
     def __init__(self, parent, docfiles):
+        utils.init_dir()
         wx.Frame.__init__(self, parent, title='rbook', size=(800, 700))
         self.notebook = fnb.FlatNotebook(self, agwStyle=fnb.FNB_X_ON_TAB | \
                                                         fnb.FNB_NO_X_BUTTON | \
@@ -36,8 +37,11 @@ class MainFrame(wx.Frame):
                                                         fnb.FNB_NO_TAB_FOCUS)
         self.statusbar = self.CreateStatusBar()
         self.statusbar.SetFieldsCount(2)
-        self.settings = {'ic':0, 'showoutline': 1, 'quitonlast': 1,
-                'storepages': 1, 'autochdir': 1}
+        self.settings = {'ic':0, 
+                         'showoutline': 1, 
+                         'quitonlast': 1,
+                         'storepages': 1, 
+                         'autochdir': 1}
         self.currentdir = os.path.expanduser('~')
         self.init_settings()
         if self.settings['storepages']:
@@ -46,14 +50,17 @@ class MainFrame(wx.Frame):
         for docfile in docfiles:
             docname, ext = os.path.splitext(os.path.basename(docfile))
             try:
-                doc_viewer = DocViewer(self.notebook, docfile, docname, 
+                doc_viewer = DocViewer(self.notebook, docfile, 
                                        ext.lower(), self.settings['showoutline'])
                 self.notebook.AddPage(doc_viewer, docname)
             except IOError as inst:
-                print(inst)
+                self.statusbar.SetStatusText('!Error: %s' % inst.args)
         
         if self.notebook.GetPageCount() > 0:
-            self.notebook.GetPage(0).doc_scroll.panel.SetFocus()
+            doc_viewer = self.notebook.GetPage(0)
+            doc_viewer.doc_scroll.panel.SetFocus()
+            if self.settings['autochdir']:
+                self.currentdir = os.path.dirname(doc_viewer.filepath)
             self.update_statusbar(self.notebook.GetPage(0))
         else:
             self.textctrl.SetFocus()
@@ -98,25 +105,26 @@ class MainFrame(wx.Frame):
                 f.close()
             except IOError:
                 lines = []
-            self.pages = utils.read_pages(lines)
+            self.pages = utils.lines2dict(lines)
 
     def text_key_down(self, event):
         if self.notebook.GetPageCount() > 0:
             doc_viewer = self.notebook.GetCurrentPage()
         else:
             doc_viewer = None
+        text = self.textctrl.GetValue()
         if event.GetKeyCode() == wx.WXK_BACK:
             if (not doc_viewer is None) and len(self.textctrl.GetValue()) == 1:
                 doc_viewer.doc_scroll.panel.SetFocus()
         elif event.GetKeyCode() == wx.WXK_RETURN:
-            text = self.textctrl.GetValue()
+            self.textctrl.Clear()
+            self.statusbar.SetStatusText(text)
             if text[0] == ':':
                 self.handle_new_cmd(text, doc_viewer)
             elif not doc_viewer is None:
                 self.handle_new_search(text, doc_viewer)
                 doc_viewer.doc_scroll.panel.SetFocus()
         elif event.GetKeyCode() == wx.WXK_TAB:
-            text = self.textctrl.GetValue()
             if text[0:3] == ':o ' or text[0:4] == ':to ':
                 if self.settings['autochdir']:
                     self.do_completion(text, lambda s:utils.path_completions(s, self.currentdir))
@@ -179,7 +187,7 @@ class MainFrame(wx.Frame):
             pages = os.path.expanduser('~/.rbook/pages')
             try:
                 f = open(pages, 'w')
-                f.writelines(utils.pageslist(self.pages))
+                f.writelines(utils.dict2lines(self.pages))
                 f.close()
             except IOError:
                 pass
@@ -203,21 +211,31 @@ class MainFrame(wx.Frame):
             except ValueError:
                 self.statusbar.SetStatusText('!Error: value should be 1 or 0')
             else:
-                try:
+                if key in self.settings:
                     self.settings[key] = value
-                except KeyError:
+                else:
                     self.statusbar.SetStatusText('!Error: %s is not a valid key' % key)
             
+    def open_document(self, path):
+        if self.settings['autochdir']:
+            fullpath = os.path.normpath(os.path.join(self.currentdir,
+                                                 os.path.expanduser(path)))
+        else:
+            fullpath = os.path.abspath(os.path.expanduser(path))
+        try:
+            docname, ext = os.path.splitext(os.path.basename(fullpath))
+            doc_viewer = DocViewer(self.notebook,
+                                   str(fullpath),
+                                   ext.lower(),
+                                   self.settings['showoutline'])
+            return (docname, doc_viewer)
+        except IOError as inst:
+            raise inst
+
     def handle_new_cmd(self, text, docviewer):
-        self.textctrl.Clear()
         if text[0:4] == ':to ': #open file in new tab
             try:
-                docfile = os.path.expanduser(text[4:].strip())
-                docname, ext = os.path.splitext(os.path.basename(docfile))
-                doc_viewer = DocViewer(self.notebook, 
-                                       str(os.path.abspath(docfile)), 
-                                       docname, ext.lower(),
-                                       self.settings['showoutline'])
+                docname, doc_viewer = self.open_document(text[4:].strip())
                 self.notebook.AddPage(doc_viewer, docname, True)
             except IOError as inst:
                 self.statusbar.SetStatusText('!Error: %s' % inst.args)
@@ -225,12 +243,7 @@ class MainFrame(wx.Frame):
                     docviewer.doc_scroll.panel.SetFocus()
         elif text[0:3] == ':o ': #open file
             try:
-                docfile = os.path.expanduser(text[3:].strip())
-                docname, ext = os.path.splitext(os.path.basename(docfile))
-                doc_viewer = DocViewer(self.notebook, 
-                                       str(os.path.abspath(docfile)), 
-                                       docname, ext.lower(),
-                                       self.settings['showoutline'])
+                docname, doc_viewer = self.open_document(text[3:].strip())
                 n = self.notebook.GetSelection()
                 if n > -1:
                     self.notebook.InsertPage(n, doc_viewer, docname, True)
@@ -245,23 +258,43 @@ class MainFrame(wx.Frame):
             self.handle_new_setting(text[4:].strip())
             if not docviewer is None:
                 docviewer.doc_scroll.panel.SetFocus()
+        elif text[0:4] == ':sc ':
+            if docviewer is None:
+                self.statusbar.SetStatusText('!Error: no document and cannot set scale.')
+            else:
+                try:
+                    docviewer.set_scale(float(text[4:].strip()))
+                except ValueError as inst:
+                    self.statusbar.SetStatusText('!Error: %s.' % inst.args)
+                docviewer.doc_scroll.panel.SetFocus()
         elif text.strip() == ':q': #close a tab
             if self.notebook.GetPageCount() == 0:
                 self.on_close(None)
             else:
                 self.notebook.DeletePage(self.notebook.GetSelection())
-        elif text.strip() == ':qa' or text == 'ZZ': #quit
+        elif text.strip() == ':qa': #quit
             self.on_close(None)
+        elif text.strip() == ':h': #show manual
+            try:
+                docname, doc_viewer = self.open_document('/usr/share/rbook/manual.pdf')
+                self.notebook.AddPage(doc_viewer, docname, True)
+            except IOError:
+                self.statusbar.SetStatusText('!Error: cannot open manual: /usr/share/rbook/manual.pdf')
+                if not docviewer is None:
+                    docviewer.doc_scroll.panel.SetFocus()
+        else:#not valid cmd
+            self.statusbar.SetStatusText('!Error: %s not a valid command.' % text)
+            if not docviewer is None: 
+                docviewer.doc_scroll.panel.SetFocus()
     
     def handle_new_search(self, text, doc_viewer):
-        self.textctrl.Clear()
         if len(text) > 1:
             doc_viewer.search_text = str(text[1:])
             if text[0] == '/':
-                doc_viewer.search(doc_viewer.search_text, 1)
+                doc_viewer.search(1)
                 doc_viewer.ori = 1
             else:
-                doc_viewer.search(doc_viewer.search_text, -1)
+                doc_viewer.search(-1)
                 doc_viewer.ori = -1
 
     def handle_keys(self, event, doc_viewer):
@@ -270,149 +303,148 @@ class MainFrame(wx.Frame):
         ctrl_down = event.ControlDown()
         shift_down = event.ShiftDown()
         text = self.statusbar.GetStatusText()
-
-        if ctrl_down and keycode == 78: #c-n 
-            n = (self.notebook.GetSelection()+1)%self.notebook.GetPageCount()
-            self.notebook.SetSelection(n)
-            self.on_page_changed(None, n)
-        elif ctrl_down and keycode == 80: #c-p
-            n = (self.notebook.GetSelection()-1)%self.notebook.GetPageCount()
-            self.notebook.SetSelection(n)
-            self.on_page_changed(None, n)
-        elif ctrl_down and keycode == 70: #c-f
-            doc_viewer.on_next_page(None)
-            doc_viewer.prev_cmd = 'self.on_next_page(None)'
-        elif ctrl_down and keycode == 66: #c-b
-            doc_viewer.on_prev_page(None)
-            doc_viewer.prev_cmd = 'self.on_prev_page(None)'
-        elif ctrl_down and keycode == 79: #c-o
-            doc_viewer.on_page_back(None)
-            doc_viewer.prev_cmd = 'self.on_page_back(None)'
-        elif ctrl_down and keycode == 73: #c-i
-            doc_viewer.on_page_fwd(None)
-            doc_viewer.prev_cmd = 'self.on_page_fwd(None)'
-        elif (ctrl_down and keycode == 85) or\
-             (not ctrl_down and keycode == wx.WXK_PAGEUP):#c-u
-            doc_viewer.doc_scroll.vertical_scroll(-20)
-            doc_viewer.prev_cmd = 'self.doc_scroll.vertical_scroll(-20)'
-        elif (ctrl_down and keycode == 68) or\
-             (not ctrl_down and keycode == wx.WXK_PAGEDOWN) or\
-             keycode == wx.WXK_SPACE:#c-d
-            doc_viewer.doc_scroll.vertical_scroll(20)
-            doc_viewer.prev_cmd = 'self.doc_scroll.vertical_scroll(20)'
-        elif keycode > 64 and keycode < 91:#press letters
-            if len(text) > 0 and (not text[-1].isdigit()) \
-                             and text[0].isalnum(): 
-                #check if it's part of a cmd
-                if text[-1] == 'g':#prev is g
-                    if rawkeycode == 103:#press another g
-                        if len(text) == 1:#no nums
-                            doc_viewer.marks[96] = (doc_viewer.current_page_idx, 
-                                                    doc_viewer.scale, 
-                                                    doc_viewer.doc_scroll.GetViewStart())
-                            doc_viewer.doc_scroll.Scroll(-1, 0)
-                        else:
-                            doc_viewer.marks[96] = (doc_viewer.current_page_idx, 
-                                                    doc_viewer.scale, 
-                                                    doc_viewer.doc_scroll.GetViewStart())
-                            doc_viewer.change_page(int(text[0:-1])-1)#it's num gg
-                elif text[-1] == 'm':#prev is m
-                    doc_viewer.marks[rawkeycode] = (doc_viewer.current_page_idx,
-                                                    doc_viewer.scale, 
-                                                    doc_viewer.doc_scroll.GetViewStart())
+        if len(text) > 0 and \
+                (text[0] == '/' or \
+                 text[0] == ':' or \
+                 text[0] == '!' or \
+                 text[0] == '?'):
+            text = ''
+        try:
+            if ctrl_down and keycode == 78: #c-n 
+                n = (self.notebook.GetSelection()+1)%self.notebook.GetPageCount()
+                self.notebook.SetSelection(n)
+                self.on_page_changed(None, n)
+            elif ctrl_down and keycode == 80: #c-p
+                n = (self.notebook.GetSelection()-1)%self.notebook.GetPageCount()
+                self.notebook.SetSelection(n)
+                self.on_page_changed(None, n)
+            elif ctrl_down and keycode == 70: #c-f
+                doc_viewer.on_next_page(None)
+                doc_viewer.prev_cmd = 'self.on_next_page(None)'
+            elif ctrl_down and keycode == 66: #c-b
+                doc_viewer.on_prev_page(None)
+                doc_viewer.prev_cmd = 'self.on_prev_page(None)'
+            elif ctrl_down and keycode == 79: #c-o
+                doc_viewer.on_page_back(None)
+                doc_viewer.prev_cmd = 'self.on_page_back(None)'
+            elif ctrl_down and keycode == 73: #c-i
+                doc_viewer.on_page_fwd(None)
+                doc_viewer.prev_cmd = 'self.on_page_fwd(None)'
+            elif ctrl_down and keycode == 85: #c-u
+                doc_viewer.vertical_scroll(-20)
+                doc_viewer.prev_cmd = 'self.vertical_scroll(-20)'
+            elif (ctrl_down and keycode == 68) or\
+                 keycode == wx.WXK_SPACE:#c-d or space
+                doc_viewer.vertical_scroll(20)
+                doc_viewer.prev_cmd = 'self.vertical_scroll(20)'
+            elif keycode > 64 and keycode < 91:#press letters
+                if len(text) > 0: #it's part of a cmd
                     self.statusbar.SetStatusText('')
-                elif text[-1] == 'Z':#prev is Z
-                    self.on_close(None)
-                else:#prev is ' or `
-                    doc_viewer.retrive_mark(rawkeycode)
-                self.statusbar.SetStatusText('')
-            elif len(text) > 0 and text[0].isdigit():#no prev key, has nums
-                if rawkeycode == 103:#press g
-                    self.statusbar.SetStatusText(self.statusbar.GetStatusText()+'g')
+                    if text[-1] == 'g':#prev is g
+                        if rawkeycode == 103:#press another g
+                            if len(text) == 1:#no nums
+                                doc_viewer.change_page(0)#it's gg
+                            else:
+                                    doc_viewer.change_page(int(text[0:-1])-1)#it's num gg
+                    elif text == 'm':#prev is m
+                        doc_viewer.marks[rawkeycode] = (doc_viewer.current_page_idx,
+                                                        doc_viewer.scale, 
+                                                        doc_viewer.doc_scroll.GetViewStart())
+                    elif text == 'Z' and rawkeycode == 90:#prev is Z, press another Z
+                        self.on_close(None)
+                    elif text == "'" or text == '`':#prev is ' or `
+                        doc_viewer.retrive_mark(rawkeycode)
+                    elif text[0].isdigit(): #prev are all nums 
+                        if rawkeycode == 103:#press g
+                            self.statusbar.SetStatusText(text+'g')
+                        elif rawkeycode == 106:#press j
+                            doc_viewer.change_page(doc_viewer.current_page_idx + int(text))
+                            doc_viewer.prev_cmd = 'self.change_page(self.current_page_idx+%s)' % text
+                        elif rawkeycode == 107:#press k
+                            doc_viewer.change_page(doc_viewer.current_page_idx - int(text))
+                            doc_viewer.prev_cmd = 'self.change_page(self.current_page_idx-%s)' % text
+                elif rawkeycode == 103 or rawkeycode == 109 or rawkeycode == 90: 
+                #no prev key, no nums, press g or m or Z
+                    self.statusbar.SetStatusText(chr(rawkeycode))
+                elif rawkeycode == 114: # press r
+                    doc_viewer.on_refresh(None)
+                elif rawkeycode == 119: # press w
+                    doc_viewer.on_fit_width(None)
+                elif keycode == 68:#press D or d
+                    self.notebook.DeletePage(self.notebook.GetSelection())
+                elif rawkeycode == 71:#press G
+                    doc_viewer.change_page(doc_viewer.n_pages-1)
+                elif rawkeycode == 106:#press j
+                    doc_viewer.vertical_scroll(1)
+                    doc_viewer.prev_cmd = 'self.vertical_scroll(1)'
+                elif rawkeycode == 107:#press k
+                    doc_viewer.vertical_scroll(-1)
+                    doc_viewer.prev_cmd = 'self.vertical_scroll(-1)'
+                elif rawkeycode == 104:#press h
+                    doc_viewer.horizontal_scroll(-1)
+                    doc_viewer.prev_cmd = 'self.horizontal_scroll(-1)'
+                elif rawkeycode == 108:#press l
+                    doc_viewer.horizontal_scroll(1)
+                    doc_viewer.prev_cmd = 'self.horizontal_scroll(1)'
+                elif rawkeycode == 72:#press H
+                    doc_viewer.doc_scroll.Scroll(-1, 0)
+                elif rawkeycode == 76:#press L
+                    doc_viewer.doc_scroll.Scroll(-1, doc_viewer.doc_scroll.GetScrollRange(wx.VERTICAL))
+                elif rawkeycode == 110:#press n
+                    doc_viewer.search_next(1)
+                elif rawkeycode == 78:#press N
+                    doc_viewer.search_next(-1)
+                elif rawkeycode == 102:#press f
+                    fullscreen = self.IsFullScreen()
+                    self.ShowFullScreen(not fullscreen)
+                    if fullscreen:
+                        self.notebook.ShowTabs()
+                    else:
+                        self.notebook.HideTabs()
+                elif rawkeycode == 118:#press v
+                    if doc_viewer.show_outline == 1:
+                        doc_viewer.doc_scroll.panel.SetFocus()
+                        doc_viewer.Unsplit(doc_viewer.outline_tree)
+                        doc_viewer.show_outline = -1
+                    elif doc_viewer.show_outline == -1:
+                        doc_viewer.SplitVertically(doc_viewer.outline_tree, doc_viewer.doc_scroll, 200)
+                        doc_viewer.show_outline = 1
+
+            elif rawkeycode > 47 and rawkeycode < 58:#press digit
+                if len(text) > 0 and text[-1].isalpha():
+                    self.statusbar.SetStatusText('')
                 else:
-                    if rawkeycode == 106:#press j
-                        doc_viewer.change_page(doc_viewer.current_page_idx + int(text))
-                        doc_viewer.prev_cmd = 'self.change_page(self.current_page_idx+%s)' % text
-                    elif rawkeycode == 107:#press k
-                        doc_viewer.change_page(doc_viewer.current_page_idx - int(text))
-                        doc_viewer.prev_cmd = 'self.change_page(self.current_page_idx-%s)' % text
+                    self.statusbar.SetStatusText(text+chr(rawkeycode))
+
+            elif rawkeycode == 96 or rawkeycode == 39:#press ' or `
+                if len(text) == 0:
+                    self.statusbar.SetStatusText(chr(rawkeycode))
+                elif text[-1] == "'" or text[-1] == '`':
+                    doc_viewer.retrive_mark(96)
                     self.statusbar.SetStatusText('')
-            elif rawkeycode == 103 or rawkeycode == 109 or rawkeycode == 90: 
-            #no prev key, no nums, press g or m or Z
-                self.statusbar.SetStatusText(chr(rawkeycode))
-            elif rawkeycode == 114: # press r
-                doc_viewer.on_refresh(None)
-            elif rawkeycode == 119: # press w
-                doc_viewer.on_fit_width(None)
-            elif keycode == 68:#press D or d
-                self.notebook.DeletePage(self.notebook.GetSelection())
-            elif rawkeycode == 71:#press G
-                doc_viewer.marks[96] = (doc_viewer.current_page_idx, 
-                                        doc_viewer.scale, 
-                                        doc_viewer.doc_scroll.GetViewStart())
-                doc_viewer.doc_scroll.Scroll(-1, doc_viewer.doc_scroll.GetScrollRange(wx.VERTICAL))
-            elif rawkeycode == 106:#press j
-                doc_viewer.doc_scroll.vertical_scroll(1)
-                doc_viewer.prev_cmd = 'self.doc_scroll.vertical_scroll(1)'
-            elif rawkeycode == 107:#press k
-                doc_viewer.doc_scroll.vertical_scroll(-1)
-                doc_viewer.prev_cmd = 'self.doc_scroll.vertical_scroll(-1)'
-            elif rawkeycode == 104:#press h
-                doc_viewer.doc_scroll.horizontal_scroll(-1)
-                doc_viewer.prev_cmd = 'self.doc_scroll.horizontal_scroll(-1)'
-            elif rawkeycode == 108:#press l
-                doc_viewer.doc_scroll.horizontal_scroll(1)
-                doc_viewer.prev_cmd = 'self.doc_scroll.horizontal_scroll(1)'
-            elif rawkeycode == 110:#press n
-                doc_viewer.search_next(1)
-            elif rawkeycode == 78:#press N
-                doc_viewer.search_next(-1)
-            elif rawkeycode == 118:#press v
-                if doc_viewer.show_outline == 1:
-                    doc_viewer.doc_scroll.panel.SetFocus()
-                    doc_viewer.Unsplit(doc_viewer.outline_tree)
-                    doc_viewer.show_outline = -1
-                elif doc_viewer.show_outline == -1:
-                    doc_viewer.SplitVertically(doc_viewer.outline_tree, doc_viewer.doc_scroll, 200)
-                    doc_viewer.show_outline = 1
+                else:
+                    self.statusbar.SetStatusText('')
 
-        elif rawkeycode > 47 and rawkeycode < 58:#press digit
-            if len(text) > 0 and text[-1].isalpha():
+            elif rawkeycode == 43:# +, zoom in
+                doc_viewer.on_zoom_in(None)
+                doc_viewer.prev_cmd = 'self.on_zoom_in(None)'
+            elif rawkeycode == 45:# -, zoom out
+                doc_viewer.on_zoom_out(None)
+                doc_viewer.prev_cmd = 'self.on_zoom_out(None)'
+            elif keycode == wx.WXK_ESCAPE:
                 self.statusbar.SetStatusText('')
-            else:
-                self.statusbar.SetStatusText(text+chr(rawkeycode))
-
-        elif rawkeycode == 96 or rawkeycode == 39:#press ' or `
-            if len(text) == 0:
-                self.statusbar.SetStatusText(chr(rawkeycode))
-            elif text[-1] == "'" or text[-1] == '`':
-                doc_viewer.retrive_mark(96)
-                self.statusbar.SetStatusText('')
-            else:
-                self.statusbar.SetStatusText('')
-
-        elif keycode == wx.WXK_DOWN:
-            doc_viewer.doc_scroll.vertical_scroll(1)
-        elif keycode == wx.WXK_UP:
-            doc_viewer.doc_scroll.vertical_scroll(-1)
-        elif rawkeycode == 43:# +, zoom in
-            doc_viewer.on_zoom_in(None)
-            doc_viewer.prev_cmd = 'self.on_zoom_in(None)'
-        elif rawkeycode == 45:# -, zoom out
-            doc_viewer.on_zoom_out(None)
-            doc_viewer.prev_cmd = 'self.on_zoom_out(None)'
-        elif keycode == wx.WXK_ESCAPE:
-            self.statusbar.SetStatusText('')
-        elif keycode == 46: #. repeat cmd
-            doc_viewer.repeat_cmd()
-        elif rawkeycode == 47 or rawkeycode == 63: # press / or ?
-            self.textctrl.WriteText(chr(rawkeycode))
-            self.textctrl.SetFocus()
-            self.textctrl.SetInsertionPointEnd()
-        elif rawkeycode == 58: #press :
-            self.textctrl.WriteText(':')
-            self.textctrl.SetFocus()
-            self.textctrl.SetInsertionPointEnd()
+            elif keycode == 46: #. repeat cmd
+                doc_viewer.repeat_cmd()
+            elif rawkeycode == 47 or rawkeycode == 63: # press / or ?
+                self.textctrl.WriteText(chr(rawkeycode))
+                self.textctrl.SetFocus()
+                self.textctrl.SetInsertionPointEnd()
+            elif rawkeycode == 58: #press :
+                self.textctrl.WriteText(':')
+                self.textctrl.SetFocus()
+                self.textctrl.SetInsertionPointEnd()
+        except ValueError as inst:
+            self.statusbar.SetStatusText('!Error: %s' % inst.args)
 
     def do_completion(self, text, complete_cb):
         completion = self.completion

@@ -16,22 +16,24 @@
 # You should have received a copy of the GNU General Public License
 # along with rbook.  If not, see <http://www.gnu.org/licenses/>.
 
-import os.path
+import os
 import glob
 
-def read_pages(lines):
+
+def lines2dict(lines):
     res = {}
     for line in lines:
         line = line.strip()
-        if line == '':
+        try:
+            inode, page, path = line.split(' ')
+        except ValueError:
             continue
-        inode, page, path = line.split(' ')
-        res[int(inode)] = (int(page), path)
+        else:
+            res[int(inode)] = (int(page), path)
     return res
 
-def pageslist(pages):
+def dict2lines(pages):
     res = []
-    item = pages.iteritems()
     for inode, info in pages.items():
         res.append('%s %s %s\n' % (str(inode), str(info[0]), info[1]))
     return res
@@ -53,4 +55,27 @@ def cmd_completions(s):
     res = [cmd for cmd in fullcmd if cmd.find(s)==0]
     res.append(s)
     return res
+
+def init_dir():
+    configdir = os.path.expanduser('~/.rbook')
+    if not os.path.exists(configdir):
+        os.makedirs(configdir, 0755)
+        configfile = os.path.join(configdir, 'rbookrc')
+        fout = open(configfile, 'w')
+        lines = ['#ignore case when searching, default false\n',
+                 '#ic=0\n',
+                 '\n',
+                 '#show outline if available, default true\n',
+                 '#showoutline=1\n',
+                 '\n',
+                 '#quit rbook when closing the last tab, default true\n',
+                 '#quitonlast=1\n', 
+                 '\n',
+                 '#store page index for next time, default true\n', 
+                 '#storepages=1\n', 
+                 '\n',
+                 '#automatically change the dir to the dir containing the current document\n', 
+                 '#autochdir=1\n'] 
+        fout.writelines(lines)
+        fout.close()
 

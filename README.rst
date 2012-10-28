@@ -1,9 +1,20 @@
 README for rbook
 ================
 
+Main features
+-------------
+
+* vim style key bindings
+* support PDF/CBZ/XPS/DJVU
+* continue from the page opened last time
+* open documents in tabs
+
 Dependencies
 ------------
-rbook requires `wxPython <http://wxpython.org>`_ (version >= 2.8) and `python-fitz <https://github.com/rk700/python-fitz>`_
+
+* `wxPython <http://wxpython.org>`_ (version >= 2.8) 
+* `python-fitz <https://github.com/rk700/python-fitz>`_ for PDF/CBZ/XPS files
+* `python-djvulibre <http://jwilk.net/software/python-djvulibre>`_ (optional) for DJVU files
 
 
 Install
@@ -25,4 +36,6 @@ Project page is on
 https://github.com/rk700/rbook
 
 You can also send email to the author:
-Ruikai Liu <lrk700@gmail.com>
+`Ruikai Liu`_ 
+
+.. _Ruikai Liu: lrk700@gmail.com
