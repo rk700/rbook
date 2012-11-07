@@ -58,7 +58,7 @@ class DocScroll(wx.ScrolledWindow):
     def on_paint(self, event):
         dc = wx.BufferedPaintDC(self.panel, self.buffer)#, wx.BUFFER_VIRTUAL_AREA)
 
-    def set_current_page(self, current_page_idx, draw):
+    def set_current_page(self, current_page_idx, draw, scroll=None):
         self.hitbbox = []
         self.current_page = self.parent.document.pages[current_page_idx].decode(True)
         self.orig_width = self.current_page.width
@@ -67,16 +67,17 @@ class DocScroll(wx.ScrolledWindow):
 
         self.text = self.parent.document.pages[current_page_idx].text.sexpr
         if draw:
-            self.setup_drawing()
+            self.setup_drawing(scroll=scroll)
 
-    def setup_drawing(self, hitbbox=None):
+    def setup_drawing(self, hitbbox=None, scroll=None):
         self.panel.SetSize((self.width, self.height))
         self.SetVirtualSize((self.width, self.height))
         self.SetScrollbars(self.scroll_unit, self.scroll_unit, 
                            self.width/self.scroll_unit, 
                            self.height/self.scroll_unit)
-        self.Scroll(0, 0)
         self.parent.put_center(self)
+        if scroll:
+            self.Scroll(scroll[0], scroll[1])
 
         try:
             self.data = self.current_page.render(djvu.decode.RENDER_COLOR, 
@@ -171,8 +172,10 @@ class DocScroll(wx.ScrolledWindow):
                 hit = 0
             self.parent.current_page_idx = current_page_idx
             self.parent.main_frame.update_statusbar(self.parent)
-            self.setup_drawing(self.hitbbox[hit])
-            self.Scroll(-1, self.scale*self.hitbbox[hit][3]/self.scroll_unit)
+            hitbbox = self.hitbbox[hit]
+            self.setup_drawing(hitbbox,
+                               (self.scale*hitbbox[0]/self.scroll_unit,
+                                self.scale*hitbbox[3]/self.scroll_unit))
 
         return hit
 

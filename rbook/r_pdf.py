@@ -108,7 +108,7 @@ class DocScroll(wx.ScrolledWindow):
         dc = wx.BufferedDC(wx.ClientDC(self.panel), 
                            self.buffer)
 
-    def set_current_page(self, current_page_idx, draw):
+    def set_current_page(self, current_page_idx, draw, scroll=None):
         self.hitbbox = []
         current_page = self.parent.document.load_page(current_page_idx)
         self.page_rect = current_page.bound_page()
@@ -130,23 +130,24 @@ class DocScroll(wx.ScrolledWindow):
                                            self.bbox, None)
 
         if draw:
-            self.setup_drawing()
+            self.setup_drawing(scroll=scroll)
 
-    def setup_drawing(self, hitbbox=None):
+    def setup_drawing(self, hitbbox=None, scroll=None):
         self.panel.SetSize((self.width, self.height))
         self.SetVirtualSize((self.width, self.height))
         self.SetScrollbars(self.scroll_unit, self.scroll_unit, 
                            self.width/self.scroll_unit, 
                            self.height/self.scroll_unit)
-        self.Scroll(0, 0)
         self.parent.put_center(self)
+        if scroll:
+            self.Scroll(scroll[0], scroll[1])
 
         self.pix = self.ctx.new_pixmap_with_bbox(fitz.fz_device_rgb, self.bbox)
         self.pix.clear_pixmap(255);
         dev = self.pix.new_draw_device()
         self.display_list.run_display_list(dev, self.trans,
                                            self.bbox, None)
-        if not hitbbox is None:
+        if hitbbox:
             for bbox in hitbbox:
                 self.pix.invert_pixmap(self.trans.transform_bbox(bbox))
 
@@ -191,9 +192,10 @@ class DocScroll(wx.ScrolledWindow):
                 hit = 0
             self.parent.current_page_idx = current_page_idx
             self.parent.main_frame.update_statusbar(self.parent)
-            self.setup_drawing(self.hitbbox[hit])
-            self.Scroll(-1, self.trans.transform_bbox(
-                                self.hitbbox[hit][0]).y0/self.scroll_unit)
+            trans_hitbbox = self.trans.transform_bbox(self.hitbbox[hit][0])
+            self.setup_drawing(self.hitbbox[hit], 
+                               (trans_hitbbox.x0/self.scroll_unit,
+                                trans_hitbbox.y0/self.scroll_unit))
 
         return hit
 

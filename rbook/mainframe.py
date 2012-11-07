@@ -50,7 +50,7 @@ class MainFrame(wx.Frame):
         for docfile in docfiles:
             docname, ext = os.path.splitext(os.path.basename(docfile))
             try:
-                doc_viewer = DocViewer(self.notebook, docfile, 
+                doc_viewer = DocViewer(self.notebook, os.path.abspath(docfile),
                                        ext.lower(), self.settings['showoutline'])
                 self.notebook.AddPage(doc_viewer, docname)
             except IOError as inst:
@@ -357,27 +357,27 @@ class MainFrame(wx.Frame):
                     elif text[0].isdigit(): #prev are all nums 
                         if rawkeycode == 103:#press g
                             self.statusbar.SetStatusText(text+'g')
-                        elif rawkeycode == 106:#press j
+                        elif keycode == 74:#press j
                             doc_viewer.change_page(doc_viewer.current_page_idx + int(text))
                             doc_viewer.prev_cmd = 'self.change_page(self.current_page_idx+%s)' % text
-                        elif rawkeycode == 107:#press k
+                        elif keycode == 75:#press k
                             doc_viewer.change_page(doc_viewer.current_page_idx - int(text))
                             doc_viewer.prev_cmd = 'self.change_page(self.current_page_idx-%s)' % text
                 elif rawkeycode == 103 or rawkeycode == 109 or rawkeycode == 90: 
                 #no prev key, no nums, press g or m or Z
                     self.statusbar.SetStatusText(chr(rawkeycode))
-                elif rawkeycode == 114: # press r
+                elif keycode == 82: # press r
                     doc_viewer.on_refresh(None)
-                elif rawkeycode == 119: # press w
+                elif keycode == 87: # press w
                     doc_viewer.on_fit_width(None)
                 elif keycode == 68:#press D or d
                     self.notebook.DeletePage(self.notebook.GetSelection())
                 elif rawkeycode == 71:#press G
                     doc_viewer.change_page(doc_viewer.n_pages-1)
-                elif rawkeycode == 106:#press j
+                elif keycode == 74:#press j
                     doc_viewer.vertical_scroll(1)
                     doc_viewer.prev_cmd = 'self.vertical_scroll(1)'
-                elif rawkeycode == 107:#press k
+                elif keycode == 75:#press k
                     doc_viewer.vertical_scroll(-1)
                     doc_viewer.prev_cmd = 'self.vertical_scroll(-1)'
                 elif rawkeycode == 104:#press h
@@ -394,14 +394,14 @@ class MainFrame(wx.Frame):
                     doc_viewer.search_next(1)
                 elif rawkeycode == 78:#press N
                     doc_viewer.search_next(-1)
-                elif rawkeycode == 102:#press f
+                elif keycode == 70:#press f
                     fullscreen = self.IsFullScreen()
                     self.ShowFullScreen(not fullscreen)
                     if fullscreen:
                         self.notebook.ShowTabs()
                     else:
                         self.notebook.HideTabs()
-                elif rawkeycode == 118:#press v
+                elif keycode == 86:#press v
                     if doc_viewer.show_outline == 1:
                         doc_viewer.doc_scroll.panel.SetFocus()
                         doc_viewer.Unsplit(doc_viewer.outline_tree)

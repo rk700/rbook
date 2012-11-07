@@ -129,7 +129,7 @@ class DocViewer(wx.SplitterWindow):
         item = event.GetItem()
         if item.IsOk():
             data = self.outline_tree.GetItemData(item).GetData()
-            if type(data) is int:
+            if type(data) is int: 
                 self.set_current_page(data)
             else:
                 self.set_current_page(data[0])
@@ -222,8 +222,8 @@ class DocViewer(wx.SplitterWindow):
                                             self.search_text, 
                                             ori*self.ori)
         
-    def set_current_page(self, current_page_idx):
-        self.doc_scroll.set_current_page(current_page_idx, True)
+    def set_current_page(self, current_page_idx, scroll=None):
+        self.doc_scroll.set_current_page(current_page_idx, True, scroll)
         self.current_page_idx = current_page_idx
         self.main_frame.update_statusbar(self)
 
@@ -280,11 +280,10 @@ class DocViewer(wx.SplitterWindow):
             if mark[0] != page_idx:
                 self.page_back.append(self.current_page_idx)
                 self.page_fwd = []
-                self.set_current_page(page_idx)
+                self.set_current_page(page_idx, point)
             self.scale = scale
             self.doc_scroll.set_scale(scale)
             self.main_frame.update_statusbar(self)
-            self.doc_scroll.Scroll(point[0], point[1])
             self.marks[96] = mark
 
     def change_page(self, page_idx):
