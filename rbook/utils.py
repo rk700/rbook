@@ -17,6 +17,7 @@
 # along with rbook.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import wx
 import glob
 
 
@@ -25,17 +26,27 @@ def lines2dict(lines):
     for line in lines:
         line = line.strip()
         try:
-            inode, page, path = line.split(' ')
+            inode, path, page, scale, posx, posy, show_outline = line.split(' ')
         except ValueError:
             continue
         else:
-            res[int(inode)] = (int(page), path)
+            res[int(inode)] = (path, 
+                               int(page),
+                               float(scale), 
+                               (int(posx), int(posy)),
+                               int(show_outline))
     return res
 
 def dict2lines(pages):
     res = []
     for inode, info in pages.items():
-        res.append('%s %s %s\n' % (str(inode), str(info[0]), info[1]))
+        res.append('%s %s %s %s %s %s %s\n' % (str(inode), 
+                                               info[0], 
+                                               str(info[1]),
+                                               str(info[2]),
+                                               str(info[3][0]),
+                                               str(info[3][1]),
+                                               str(info[4])))
     return res
 
 def path_completions(s, currentdir=''):
@@ -79,3 +90,70 @@ def init_dir():
         fout.writelines(lines)
         fout.close()
 
+def init_settings():
+    settings = {'ic':0, 
+                'showoutline': 1, 
+                'quitonlast': 1,
+                'storepages': 1, 
+                'autochdir': 1}
+
+    configfile = os.path.expanduser('~/.rbook/rbookrc')
+    if os.path.exists(configfile):
+        try:
+            f = open(configfile)
+            lines = f.readlines()
+            f.close()
+        except IOError:
+            lines = []
+
+        for line in lines:
+            text = line.strip().split('#')[0]
+            if not text == '':
+                try:
+                    handle_new_setting(settings, text)
+                except ValueError as inst:
+                    print(inst.args)
+    return settings
+
+
+def init_page_dict():
+    pages = os.path.expanduser('~/.rbook/pages')
+    if not os.path.exists(pages):
+        f = open(pages, 'w')
+        page_dict = {}
+        f.close()
+    else:
+        try:
+            f = open(pages)
+            line = f.readline()
+            try:
+                posx, posy, sizew, sizeh = line.split(' ')
+                win_info = (wx.Point(int(posx), int(posy)),
+                            wx.Size(int(sizew), int(sizeh)))
+            except ValueError:
+                win_info = (wx.DefaultPosition, wx.DefaultSize)
+            lines = f.readlines()
+            f.close()
+        except IOError:
+            win_info = (wx.DefaultPosition, wx.DefaultSize)
+            lines = []
+        page_dict = lines2dict(lines)
+    return (win_info, page_dict)
+
+def handle_new_setting(settings, text):
+    try:
+        key, value = text.split('=')
+    except ValueError:
+        raise ValueError('!Error: format should be key=value')
+    else:
+        try:
+            value = int(value)
+            if (not value == 0) or (not value == 1):
+                raise ValueError
+        except ValueError:
+            raise ValueError('!Error: value should be 1 or 0')
+        else:
+            if key in settings:
+                settings[key] = value
+            else:
+                raise ValueError('!Error: %s is not a valid key' % key)

@@ -28,30 +28,25 @@ import utils
 from viewer import DocViewer
 
 class MainFrame(wx.Frame):
-    def __init__(self, parent, docfiles):
+    def __init__(self, parent, docfiles, settings, pos, size, pages):
         utils.init_dir()
-        wx.Frame.__init__(self, parent, title='rbook', size=(800, 700))
+        wx.Frame.__init__(self, parent, pos=pos, size=size, title='rbook')
         self.notebook = fnb.FlatNotebook(self, agwStyle=fnb.FNB_X_ON_TAB | \
                                                         fnb.FNB_NO_X_BUTTON | \
                                                         fnb.FNB_NO_NAV_BUTTONS | \
                                                         fnb.FNB_NO_TAB_FOCUS)
         self.statusbar = self.CreateStatusBar()
         self.statusbar.SetFieldsCount(2)
-        self.settings = {'ic':0, 
-                         'showoutline': 1, 
-                         'quitonlast': 1,
-                         'storepages': 1, 
-                         'autochdir': 1}
         self.currentdir = os.path.expanduser('~')
-        self.init_settings()
-        if self.settings['storepages']:
-            self.init_pages()
+        self.settings = settings
+        self.pages = pages
         self.textctrl = wx.TextCtrl(self, size=(0,0))
+        #doc_viewer = None
         for docfile in docfiles:
             docname, ext = os.path.splitext(os.path.basename(docfile))
             try:
                 doc_viewer = DocViewer(self.notebook, os.path.abspath(docfile),
-                                       ext.lower(), self.settings['showoutline'])
+                                       ext.upper(), self.settings['showoutline'])
                 self.notebook.AddPage(doc_viewer, docname)
             except IOError as inst:
                 self.statusbar.SetStatusText('!Error: %s' % inst.args)
@@ -68,7 +63,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.on_close)
         self.Bind(fnb.EVT_FLATNOTEBOOK_PAGE_CHANGED, self.on_page_changed, self.notebook)
         self.Bind(fnb.EVT_FLATNOTEBOOK_PAGE_CLOSED, self.on_page_closed, self.notebook)
-        self.Bind(fnb.EVT_FLATNOTEBOOK_PAGE_CLOSING, self.on_page_closing, self.notebook)
+        #self.Bind(fnb.EVT_FLATNOTEBOOK_PAGE_CLOSING, self.on_page_closing, self.notebook)
         self.textctrl.Bind(wx.EVT_TEXT, self.on_text)
         self.textctrl.Bind(wx.EVT_KEY_DOWN, self.text_key_down)
 
@@ -77,36 +72,6 @@ class MainFrame(wx.Frame):
         self.SetSizer(sizer)
         self.SetAutoLayout(True)
    
-    def init_settings(self):
-        configfile = os.path.expanduser('~/.rbook/rbookrc')
-        if os.path.exists(configfile):
-            try:
-                f = open(configfile)
-                lines = f.readlines()
-                f.close()
-            except IOError:
-                lines = []
-
-            for line in lines:
-                text = line.strip().split('#')[0]
-                if not text == '':
-                    self.handle_new_setting(text)
-    
-    def init_pages(self):
-        pages = os.path.expanduser('~/.rbook/pages')
-        if not os.path.exists(pages):
-            f = open(pages, 'w')
-            self.pages = {}
-            f.close()
-        else:
-            try:
-                f = open(pages)
-                lines = f.readlines()
-                f.close()
-            except IOError:
-                lines = []
-            self.pages = utils.lines2dict(lines)
-
     def text_key_down(self, event):
         if self.notebook.GetPageCount() > 0:
             doc_viewer = self.notebook.GetCurrentPage()
@@ -161,10 +126,9 @@ class MainFrame(wx.Frame):
                 self.textctrl.SetFocus()
         event.Skip()
 
-    def on_page_closing(self, event):
-        if self.settings['storepages']:
-            self.notebook.GetCurrentPage().save_page()
-        event.Skip()
+#    def on_page_closing(self, event):
+        #self.notebook.GetCurrentPage().prepare_closing()
+#        event.Skip()
 
     def on_page_changed(self, event, n=-1):
         if n == -1:
@@ -187,6 +151,11 @@ class MainFrame(wx.Frame):
             pages = os.path.expanduser('~/.rbook/pages')
             try:
                 f = open(pages, 'w')
+                pos = self.GetPosition()
+                size = self.GetSize()
+                f.write('%s %s %s %s\n' % 
+                            (str(pos.x), str(pos.y), 
+                             str(size.width), str(size.height)))
                 f.writelines(utils.dict2lines(self.pages))
                 f.close()
             except IOError:
@@ -199,23 +168,14 @@ class MainFrame(wx.Frame):
                                       doc_viewer.n_pages,
                                       int(100*doc_viewer.scale)), 
                                      1)
-
+    
     def handle_new_setting(self, text):
         try:
-            key, value = text.split('=')
-        except ValueError:
-            self.statusbar.SetStatusText('!Error: format should be key=value')
-        else:
-            try:
-                value = int(value)
-            except ValueError:
-                self.statusbar.SetStatusText('!Error: value should be 1 or 0')
-            else:
-                if key in self.settings:
-                    self.settings[key] = value
-                else:
-                    self.statusbar.SetStatusText('!Error: %s is not a valid key' % key)
-            
+            utils.handle_new_setting(self.settings, text)
+        except ValueError as inst:
+            self.statusbar.SetStatusText('%s' % inst.args)
+
+           
     def open_document(self, path):
         if self.settings['autochdir']:
             fullpath = os.path.normpath(os.path.join(self.currentdir,
@@ -226,7 +186,7 @@ class MainFrame(wx.Frame):
             docname, ext = os.path.splitext(os.path.basename(fullpath))
             doc_viewer = DocViewer(self.notebook,
                                    str(fullpath),
-                                   ext.lower(),
+                                   ext.upper(),
                                    self.settings['showoutline'])
             return (docname, doc_viewer)
         except IOError as inst:
@@ -371,6 +331,9 @@ class MainFrame(wx.Frame):
                 elif keycode == 87: # press w
                     doc_viewer.on_fit_width(None)
                 elif keycode == 68:#press D or d
+                    doc_viewer.prepare_closing()
+                    #if doc_viewer.ext == '.EPUB':
+                    doc_viewer.doc_scroll.Destroy()
                     self.notebook.DeletePage(self.notebook.GetSelection())
                 elif rawkeycode == 71:#press G
                     doc_viewer.change_page(doc_viewer.n_pages-1)
@@ -470,6 +433,14 @@ class MainFrame(wx.Frame):
 class Run:
     def __init__(self):
         app = wx.App(False)
-        frame = MainFrame(None, sys.argv[1:])
+        settings = utils.init_settings()
+        if settings['storepages']:
+            win_info, page_dict = utils.init_page_dict()
+        else:
+            win_info = (wx.DefaultPosition, wx.DefaultSize)
+            page_dict = {}
+        frame = MainFrame(None, sys.argv[1:], settings,
+                          win_info[0], win_info[1],
+                          page_dict)
         frame.Show()
         app.MainLoop()
