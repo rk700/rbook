@@ -120,6 +120,7 @@ def init_page_dict():
     pages = os.path.expanduser('~/.rbook/pages')
     if not os.path.exists(pages):
         f = open(pages, 'w')
+        win_info = (wx.DefaultPosition, wx.DefaultSize)
         page_dict = {}
         f.close()
     else:
@@ -148,7 +149,7 @@ def handle_new_setting(settings, text):
     else:
         try:
             value = int(value)
-            if (not value == 0) or (not value == 1):
+            if (not value == 0) and (not value == 1):
                 raise ValueError
         except ValueError:
             raise ValueError('!Error: value should be 1 or 0')

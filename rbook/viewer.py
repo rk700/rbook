@@ -391,6 +391,8 @@ class DocViewer(wx.SplitterWindow):
                 self.page_back.append(self.current_page_idx)
                 self.page_fwd = []
                 self.set_current_page(page_idx, point, scale=scale)
+            else:
+                self.doc_scroll.set_scale(scale, scroll=point)
             self.main_frame.update_statusbar(self)
             self.marks[96] = mark
 

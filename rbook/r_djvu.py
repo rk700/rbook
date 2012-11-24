@@ -106,17 +106,21 @@ class DocScroll(wx.ScrolledWindow):
         dc = wx.BufferedDC(wx.ClientDC(self.panel), 
                            self.buffer)
 
-    def set_scale(self, scale):
-        self.scale = scale
-        p_width, p_height = self.panel.GetSize()
-        scroll_x, scroll_y = self.GetViewStart()
-        x = 1.0*scroll_x/p_width
-        y = 1.0*scroll_y/p_height
+    def set_scale(self, scale, scroll=None):
+        if not self.scale == scale:
+            self.scale = scale
+            p_width, p_height = self.panel.GetSize()
+            scroll_x, scroll_y = self.GetViewStart()
+            x = 1.0*scroll_x/p_width
+            y = 1.0*scroll_y/p_height
 
-        self.width = scale*self.current_page.width
-        self.height = scale*self.current_page.height
-        self.setup_drawing()
-        self.Scroll(int(x*self.width), int(y*self.height))
+            self.width = scale*self.current_page.width
+            self.height = scale*self.current_page.height
+            self.setup_drawing()
+            if not scroll:
+                self.Scroll(int(x*self.width), int(y*self.height))
+        if scroll:
+            self.Scroll(scroll[0], scroll[1])
 
     def search(self, text, s):
         hitbbox = []

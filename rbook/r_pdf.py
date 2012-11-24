@@ -157,19 +157,23 @@ class DocScroll(wx.ScrolledWindow):
 
         self.do_drawing()
 
-    def set_scale(self, scale):
-        self.scale = scale
-        p_width, p_height = self.panel.GetSize()
-        scroll_x, scroll_y = self.GetViewStart()
-        x = 1.0*scroll_x/p_width
-        y = 1.0*scroll_y/p_height
-        self.set_page_size()
-        try:
-            hitbbox = self.hitbbox[self.parent.hit]
-            self.setup_drawing(hitbbox)
-        except IndexError:
-            self.setup_drawing()
-        self.Scroll(int(x*self.width), int(y*self.height))
+    def set_scale(self, scale, scroll=None):
+        if not self.scale == scale:
+            self.scale = scale
+            p_width, p_height = self.panel.GetSize()
+            scroll_x, scroll_y = self.GetViewStart()
+            x = 1.0*scroll_x/p_width
+            y = 1.0*scroll_y/p_height
+            self.set_page_size()
+            try:
+                hitbbox = self.hitbbox[self.parent.hit]
+                self.setup_drawing(hitbbox)
+            except IndexError:
+                self.setup_drawing()
+            if not scroll:
+                self.Scroll(int(x*self.width), int(y*self.height))
+        if scroll:
+            self.Scroll(scroll[0], scroll[1])
 
     def search_in_page(self, current_page_idx, s, ori):
         self.hitbbox = self.text_page.search(s, self.parent.main_frame.settings['ic'])

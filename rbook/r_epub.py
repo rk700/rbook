@@ -69,13 +69,13 @@ class DocScroll(wx.html.HtmlWindow):
                 anchor['name'] = anchor['id']
         return soup
 
-    def set_scale(self, scale):
-        if self.scale == scale:
-            pass
-        else:
+    def set_scale(self, scale, scroll=None):
+        if not self.scale == scale:
             self.scale = scale
             font_size = [int(i+(scale-self.parent.min_scale)*5) for i in range(7)]
             self.SetFonts('', '', font_size)
+        if scroll:
+            self.Scroll(scroll[0], scroll[1])
 
     def search(self, s, current_page_idx, ic):
         current_page_path = os.path.join(self.parent.extract_path, 
