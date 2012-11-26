@@ -26,6 +26,7 @@ import subprocess
 import bs4
 import wx.html
 
+
 class DocScroll(wx.html.HtmlWindow):
     def __init__(self, parent, current_page_idx):
         wx.html.HtmlWindow.__init__(self, parent, style=wx.html.HW_NO_SELECTION)
@@ -38,12 +39,7 @@ class DocScroll(wx.html.HtmlWindow):
         self.scroll_unit = self.GetScrollPixelsPerUnit()[0]
         self.sel = wx.html.HtmlSelection()
         self.set_current_page(current_page_idx, self.parent.init_pos, self.scale)
-        self.panel.Bind(wx.EVT_KEY_DOWN, lambda event:self.parent.main_frame.handle_keys(event, self.parent))
-        #self.Show()
-        #self.Scroll(10,1020)
-        #self.ScrollToAnchor('scripting')
-        #print(self.GetViewStart())
-        #self.Refresh()
+        self.panel.Bind(wx.EVT_KEY_DOWN, lambda event:wx.PostEvent(self.parent.main_frame, event))
 
     def OnLinkClicked(self, link):
         subprocess.Popen(('xdg-open', link.GetHref()))
@@ -129,7 +125,7 @@ class DocScroll(wx.html.HtmlWindow):
                 break
         if not self.hitbbox: #not found
             hit = -1
-            self.parent.main_frame.statusbar.SetStatusText('"%s" not found' % s)
+            self.parent.main_frame.statusbar.SetStatusText('!Error: "%s" not found' % s)
         else:
             if ori < 0:
                 hit = len(self.hitbbox)-1

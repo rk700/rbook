@@ -41,7 +41,7 @@ class MainFrame(wx.Frame):
         self.settings = settings
         self.pages = pages
         self.textctrl = wx.TextCtrl(self, size=(0,0))
-        #doc_viewer = None
+
         for docfile in docfiles:
             docname, ext = os.path.splitext(os.path.basename(docfile))
             try:
@@ -63,7 +63,8 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.on_close)
         self.Bind(fnb.EVT_FLATNOTEBOOK_PAGE_CHANGED, self.on_page_changed, self.notebook)
         self.Bind(fnb.EVT_FLATNOTEBOOK_PAGE_CLOSED, self.on_page_closed, self.notebook)
-        #self.Bind(fnb.EVT_FLATNOTEBOOK_PAGE_CLOSING, self.on_page_closing, self.notebook)
+        self.Bind(fnb.EVT_FLATNOTEBOOK_PAGE_CLOSING, self.on_page_closing, self.notebook)
+        self.Bind(wx.EVT_KEY_DOWN, self.handle_keys)
         self.textctrl.Bind(wx.EVT_TEXT, self.on_text)
         self.textctrl.Bind(wx.EVT_KEY_DOWN, self.text_key_down)
 
@@ -126,9 +127,9 @@ class MainFrame(wx.Frame):
                 self.textctrl.SetFocus()
         event.Skip()
 
-#    def on_page_closing(self, event):
-        #self.notebook.GetCurrentPage().prepare_closing()
-#        event.Skip()
+    def on_page_closing(self, event):
+        self.notebook.GetCurrentPage().prepare_closing()
+        event.Skip()
 
     def on_page_changed(self, event, n=-1):
         if n == -1:
@@ -257,11 +258,12 @@ class MainFrame(wx.Frame):
                 doc_viewer.search(-1)
                 doc_viewer.ori = -1
 
-    def handle_keys(self, event, doc_viewer):
+    def handle_keys(self, event):
         keycode = event.GetKeyCode()
         rawkeycode = event.GetRawKeyCode()
         ctrl_down = event.ControlDown()
         shift_down = event.ShiftDown()
+        doc_viewer = self.notebook.GetCurrentPage()
         text = self.statusbar.GetStatusText()
         if len(text) > 0 and \
                 (text[0] == '/' or \
@@ -331,9 +333,6 @@ class MainFrame(wx.Frame):
                 elif keycode == 87: # press w
                     doc_viewer.on_fit_width(None)
                 elif keycode == 68:#press D or d
-                    doc_viewer.prepare_closing()
-                    #if doc_viewer.ext == '.EPUB':
-                    doc_viewer.doc_scroll.Destroy()
                     self.notebook.DeletePage(self.notebook.GetSelection())
                 elif rawkeycode == 71:#press G
                     doc_viewer.change_page(doc_viewer.n_pages-1)

@@ -24,6 +24,7 @@ import subprocess
 import wx
 import fitz
 
+
 class DocScroll(wx.ScrolledWindow):
     def __init__(self, parent, current_page_idx):
         self.scroll_unit = 10.0
@@ -53,7 +54,7 @@ class DocScroll(wx.ScrolledWindow):
                   lambda event:self.parent.vertical_scroll(1))
         self.Bind(wx.EVT_SCROLLWIN_LINEUP, 
                   lambda event:self.parent.vertical_scroll(-1))
-        self.panel.Bind(wx.EVT_KEY_DOWN, lambda event:self.parent.main_frame.handle_keys(event, self.parent))
+        self.panel.Bind(wx.EVT_KEY_DOWN, lambda event:wx.PostEvent(self.parent.main_frame, event))
         self.panel.Bind(wx.EVT_MOTION, self.on_motion)
         self.panel.Bind(wx.EVT_LEFT_DOWN, self.on_left_down)
 

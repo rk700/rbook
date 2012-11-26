@@ -55,10 +55,10 @@ class DocScroll(wx.ScrolledWindow):
                   lambda event:self.parent.vertical_scroll(1))
         self.Bind(wx.EVT_SCROLLWIN_LINEUP, 
                   lambda event:self.parent.vertical_scroll(-1))
-        self.panel.Bind(wx.EVT_KEY_DOWN, lambda event:self.parent.main_frame.handle_keys(event, self.parent))
+        self.panel.Bind(wx.EVT_KEY_DOWN, lambda event:wx.PostEvent(self.parent.main_frame, event))
 
     def on_paint(self, event):
-        dc = wx.BufferedPaintDC(self.panel, self.buffer)#, wx.BUFFER_VIRTUAL_AREA)
+        dc = wx.BufferedPaintDC(self.panel, self.buffer)
 
     def set_current_page(self, current_page_idx, draw=True, scroll=None, scale=None):
         self.hitbbox = []

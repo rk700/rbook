@@ -18,8 +18,8 @@
 
 import os
 import wx
+import wx.lib.newevent
 import glob
-
 
 def lines2dict(lines):
     res = {}

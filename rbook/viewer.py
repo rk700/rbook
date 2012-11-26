@@ -26,6 +26,7 @@ import wx
 import fitz
 
 import r_pdf
+import utils
 
 
 class DocViewer(wx.SplitterWindow):
@@ -318,7 +319,7 @@ class DocViewer(wx.SplitterWindow):
         if self.search_text == '':
             pass
         elif self.hit < 0:
-            self.main_frame.statusbar.SetStatusText('"%s" not found' % 
+            self.main_frame.statusbar.SetStatusText('!Error: "%s" not found' % 
                                                     self.search_text)
         else:
             if self.ori > 0:
@@ -475,4 +476,3 @@ class DocViewer(wx.SplitterWindow):
                 self.doc_scroll.Scroll(-1, y)
         except ValueError:
             pass
-
