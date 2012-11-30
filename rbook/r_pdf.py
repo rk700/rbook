@@ -24,8 +24,9 @@ import subprocess
 import wx
 import fitz
 
+
 class DocScroll(wx.ScrolledWindow):
-    def __init__(self, parent, current_page_idx, show_outline):
+    def __init__(self, parent, current_page_idx):
         self.scroll_unit = 10.0
         wx.ScrolledWindow.__init__(self, parent)
         self.parent = parent
@@ -34,16 +35,18 @@ class DocScroll(wx.ScrolledWindow):
         current_page = self.parent.document.load_page(current_page_idx)
         width = current_page.bound_page().get_width()
         w_width, w_height = self.parent.main_frame.GetSize()
-        if parent.show_outline and show_outline:
+        if parent.show_outline > 0:
             w_width -= 200
         scale = round((w_width-self.vscroll_wid-self.parent.GetSashSize())/width-0.005, 2)
-        if scale > self.parent.min_scale and scale < self.parent.max_scale:
+        if not self.parent.scale == 0:
+            self.scale = self.parent.scale
+        elif scale > self.parent.min_scale and scale < self.parent.max_scale:
             self.scale = scale
         else:
             self.scale = 1.0
 
         self.panel = wx.Panel(self, -1)
-        self.set_current_page(current_page_idx, True)
+        self.set_current_page(current_page_idx, scroll=self.parent.init_pos)
        
         self.panel.Bind(wx.EVT_PAINT, self.on_paint)
         self.Bind(wx.EVT_SIZE, self.parent.on_size)
@@ -51,7 +54,7 @@ class DocScroll(wx.ScrolledWindow):
                   lambda event:self.parent.vertical_scroll(1))
         self.Bind(wx.EVT_SCROLLWIN_LINEUP, 
                   lambda event:self.parent.vertical_scroll(-1))
-        self.panel.Bind(wx.EVT_KEY_DOWN, lambda event:self.parent.main_frame.handle_keys(event, self.parent))
+        self.panel.Bind(wx.EVT_KEY_DOWN, lambda event:wx.PostEvent(self.parent.main_frame, event))
         self.panel.Bind(wx.EVT_MOTION, self.on_motion)
         self.panel.Bind(wx.EVT_LEFT_DOWN, self.on_left_down)
 
@@ -108,8 +111,10 @@ class DocScroll(wx.ScrolledWindow):
         dc = wx.BufferedDC(wx.ClientDC(self.panel), 
                            self.buffer)
 
-    def set_current_page(self, current_page_idx, draw, scroll=None):
+    def set_current_page(self, current_page_idx, draw=True, scroll=None, scale=None):
         self.hitbbox = []
+        if scale:
+            self.scale = scale
         current_page = self.parent.document.load_page(current_page_idx)
         self.page_rect = current_page.bound_page()
         self.orig_width = self.page_rect.get_width()
@@ -153,19 +158,23 @@ class DocScroll(wx.ScrolledWindow):
 
         self.do_drawing()
 
-    def set_scale(self, scale):
-        self.scale = scale
-        p_width, p_height = self.panel.GetSize()
-        scroll_x, scroll_y = self.GetViewStart()
-        x = 1.0*scroll_x/p_width
-        y = 1.0*scroll_y/p_height
-        self.set_page_size()
-        try:
-            hitbbox = self.hitbbox[self.parent.hit]
-            self.setup_drawing(hitbbox)
-        except IndexError:
-            self.setup_drawing()
-        self.Scroll(int(x*self.width), int(y*self.height))
+    def set_scale(self, scale, scroll=None):
+        if not self.scale == scale:
+            self.scale = scale
+            p_width, p_height = self.panel.GetSize()
+            scroll_x, scroll_y = self.GetViewStart()
+            x = 1.0*scroll_x/p_width
+            y = 1.0*scroll_y/p_height
+            self.set_page_size()
+            try:
+                hitbbox = self.hitbbox[self.parent.hit]
+                self.setup_drawing(hitbbox)
+            except IndexError:
+                self.setup_drawing()
+            if not scroll:
+                self.Scroll(int(x*self.width), int(y*self.height))
+        if scroll:
+            self.Scroll(scroll[0], scroll[1])
 
     def search_in_page(self, current_page_idx, s, ori):
         self.hitbbox = self.text_page.search(s, self.parent.main_frame.settings['ic'])
@@ -183,8 +192,8 @@ class DocScroll(wx.ScrolledWindow):
                 break
         if len(self.hitbbox) == 0: #not found
             hit = -1
-            self.set_current_page(current_page_idx, True)
-            self.parent.main_frame.statusbar.SetStatusText('"%s" not found' % s)
+            self.set_current_page(current_page_idx)
+            self.parent.main_frame.statusbar.SetStatusText('!Error: "%s" not found' % s)
         else:
             if ori < 0:
                 hit = len(self.hitbbox)-1
@@ -226,5 +235,6 @@ class DocScroll(wx.ScrolledWindow):
                 for bbox in new_hitbbox:
                     self.pix.invert_pixmap(self.trans.transform_bbox(bbox))
                 self.do_drawing()
-                self.Scroll(-1, new_hitbbox[0].y0/self.scroll_unit)
+                self.Scroll(new_hitbbox[0].x0/self.scroll_unit, 
+                            new_hitbbox[0].y0/self.scroll_unit)
         return newhit

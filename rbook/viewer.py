@@ -19,7 +19,8 @@
 # along with rbook.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
-import sys
+import shutil
+import zipfile
 
 import wx
 import fitz
@@ -38,73 +39,176 @@ class DocViewer(wx.SplitterWindow):
         if self.main_frame.settings['storepages']:
             try:
                 self.inode = os.stat(docfile).st_ino
-                self.current_page_idx = self.main_frame.pages[self.inode][0]
+                info = self.main_frame.pages[self.inode]
+                self.current_page_idx = info[1]
+                self.scale = info[2]
+                self.init_pos = info[3]
+                self.show_outline = info[4]
             except KeyError:
                 self.current_page_idx = 0
+                self.scale = 0
+                self.init_pos = (0, 0)
+                self.show_outline = show_outline
             except OSError:
                 self.Destroy()
                 raise IOError('cannot open file %s' % docfile)
 
 
         self.filepath = docfile
-        self.ext = ext
         self.outline_tree = wx.TreeCtrl(self, -1, 
                                         style=wx.TR_DEFAULT_STYLE | wx.TR_HIDE_ROOT)
 
-        if ext == '.djvu':
-            try:
-                import djvu.decode
-            except ImportError:
-                self.Destroy()
-                raise IOError('Install python-djvulibre for DJVU files')
-            else:
-                import r_djvu
-
-                self.ctx = djvu.decode.Context()
-
-                try:
-                    self.document = self.ctx.new_document(djvu.decode.FileURI(self.filepath))
-                    self.document.decoding_job.wait()
-                    self.n_pages = len(self.document.pages)
-                    self.set_outline()
-                except djvu.decode.JobFailed:
-                    self.Destroy()
-                    raise IOError('cannot open file %s' % docfile)
-
-                self.doc_scroll = r_djvu.DocScroll(self, self.current_page_idx, show_outline);
-
-        elif ext == '.pdf' or ext == '.cbz' or ext == '.xps':
-            self.ctx = fitz.Context(fitz.FZ_STORE_DEFAULT)
-
-            try:
-                self.document = self.ctx.open_document(self.filepath)
-                self.n_pages = self.document.count_pages()
-                self.set_outline()
-            except IOError:
-                self.Destroy()
-                raise IOError('cannot open file %s' % docfile)
-
-            self.doc_scroll = r_pdf.DocScroll(self, self.current_page_idx, show_outline);
-
+        if ext == '.DJVU':
+            self.ext = ext
+            self.djvu_init_doc()
+        elif ext == '.PDF' or ext == '.CBZ' or ext == '.XPS':
+            self.ext = '.PDF'
+            self.pdf_init_doc()
+        elif ext == '.EPUB':
+            self.ext = ext
+            self.epub_init_doc()
+            self.set_outline()
         else:
             self.Destroy()
-            raise IOError('%s file is not supported' % ext)
+            raise IOError('%s file is not supported' % ext[1:])
 
         self.Bind(wx.EVT_TREE_SEL_CHANGED, self.on_sel_changed, self.outline_tree)
         self.SetMinimumPaneSize(180)
         self.SplitVertically(self.outline_tree, self.doc_scroll, 200)
-        if not (self.show_outline and show_outline):
+        if not self.show_outline > 0:
             self.Unsplit(self.outline_tree)
-            self.show_outline *= -1
 
         self.scale = self.doc_scroll.scale
         self.main_frame.update_statusbar(self)
             
         self.init()
-        self.Show()
+
+    def prepare_closing(self):
+        if self.ext == '.EPUB':
+            try: 
+                shutil.rmtree(os.path.join(os.path.expanduser('~/.rbook/cache/'),
+                                    str(os.stat(self.filepath).st_ino)))
+            except:
+                pass
+            finally:
+                self.book.close()
+        if self.main_frame.settings['storepages']:
+            self.save_page()
+
+    def djvu_init_doc(self):
+        try:
+            import djvu.decode
+        except ImportError:
+            self.Destroy()
+            raise IOError('Install python-djvulibre for DJVU files')
+        else:
+            import r_djvu
+
+            self.ctx = djvu.decode.Context()
+            try:
+                self.document = self.ctx.new_document(djvu.decode.FileURI(self.filepath))
+                self.document.decoding_job.wait()
+                self.n_pages = len(self.document.pages)
+            except djvu.decode.JobFailed:
+                self.Destroy()
+                raise IOError('cannot open file %s' % docfile)
+            self.set_outline()
+            if not self.current_page_idx < self.n_pages:
+                self.current_page_idx = self.n_pages - 1
+            self.doc_scroll = r_djvu.DocScroll(self, self.current_page_idx);
+
+    def pdf_init_doc(self):
+        self.ctx = fitz.Context(fitz.FZ_STORE_DEFAULT)
+        try:
+            self.document = self.ctx.open_document(self.filepath)
+            self.n_pages = self.document.count_pages()
+        except IOError:
+            self.Destroy()
+            raise IOError('cannot open file %s' % docfile)
+        self.set_outline()
+        if not self.current_page_idx < self.n_pages:
+            self.current_page_idx = self.n_pages - 1
+        self.doc_scroll = r_pdf.DocScroll(self, self.current_page_idx);
+
+    def epub_init_doc(self):
+        try:
+            import epub
+        except ImportError:
+            self.Destroy()
+            raise IOError('Install python-epub for EPUB files')
+        else:
+            import r_epub
+
+            extract_path = os.path.join(os.path.expanduser('~/.rbook/cache/'),
+                                        str(os.stat(self.filepath).st_ino))
+            zipfile.ZipFile(self.filepath, 'r').extractall(extract_path)
+            self.book = epub.open_epub(self.filepath)
+            self.extract_path = os.path.join(extract_path, 
+                                             os.path.dirname(self.book.opf_path))
+            chaps = self.book.opf.spine.itemrefs
+            self.items = [self.book.opf.manifest[chap[0]].href for chap in chaps]
+            self.n_pages = len(self.items)
+            if not self.current_page_idx < self.n_pages:
+                self.current_page_idx = self.n_pages - 1
+            os.chdir(self.extract_path)                                       
+            self.doc_scroll = r_epub.DocScroll(self, self.current_page_idx)
+
+    def epub_set_outline(self):
+        nav_point = self.book.toc.nav_map.nav_point
+        page_target = self.book.toc.page_list.page_target
+        nav_lists = self.book.toc.nav_lists
+        root = self.outline_tree.AddRoot('/')
+        #nav_map
+        if len(page_target) == 0 and len(nav_lists) == 0:                
+               content = root
+        else:
+           content = self.outline_tree.AppendItem(root, 'Content')
+           self.outline_tree.SetItemData(content, None)
+        self.epub_init_outline_tree(nav_point, content)
+        #page_list
+        if len(page_target) > 0:
+           pagelist = self.outline_tree.AppendItem(root, 'PageList')
+           self.outline_tree.SetItemData(pagelist, None)
+           for target in page_target:
+               child = self.outline_tree.AppendItem(pagelist, target.value)
+               self.outline_tree.SetItemData(child, 
+                                             wx.TreeItemData(
+                                                 self.epub_find_page_idx(target.src)))
+        #nav_lists
+        if len(nav_lists) > 0:
+            navlists = self.outline_tree.AppendItem(root, 'NavLists')
+            self.outline_tree.SetItemData(navlists, None)
+            for navlist in nav_lists:
+                for target in navlist.navtarget:
+                    child = self.outline_tree.AppendItem(navlists, target.value)
+                    self.outline_tree.SetItemData(child, 
+                                             wx.TreeItemData(
+                                                 self.epub_find_page_idx(target.src)))
+
+    def epub_find_page_idx(self, src):
+        addr = src.split('#')
+        html = addr[0]
+        #print(html)
+        try:
+            idx = self.items.index(html)
+        except ValueError:
+            return None
+        else:
+            if len(addr) > 1:
+                return (idx, addr[1])
+            else:
+                return (idx, None)
+
+    def epub_init_outline_tree(self, nav_points, parent):
+        for point in nav_points:
+            child = self.outline_tree.AppendItem(parent, point.labels[0][0])
+            self.outline_tree.SetItemData(child, 
+                                     wx.TreeItemData(
+                                         self.epub_find_page_idx(point.src)))
+            self.epub_init_outline_tree(point.nav_point, child)
 
     def set_outline(self):
-        if self.ext == '.djvu':
+        if self.ext == '.DJVU':
             item = iter(self.document.outline.sexpr)
             try:
                 if item.next().as_string() == 'bookmarks':
@@ -116,22 +220,27 @@ class DocViewer(wx.SplitterWindow):
                 self.show_outline = 1
             except StopIteration:
                 self.show_outline = 0
-        else:
+        elif self.ext == '.PDF':
             outline = self.document.load_outline()
             if not outline is None:
                 root = self.outline_tree.AddRoot('/')
                 self.pdf_init_outline_tree(outline.get_first(), root)
-                self.show_outline = 1
+                self.show_outline *= 1
             else:
-                self.show_outline = 0
+                self.show_outline *= 0
+        else:
+            self.show_outline *= 1
+            self.epub_set_outline()
 
     def on_sel_changed(self, event):
         item = event.GetItem()
         if item.IsOk():
             data = self.outline_tree.GetItemData(item).GetData()
-            if type(data) is int: 
+            if self.ext == '.EPUB' and data:
+                self.set_current_page(data[0], data[1])
+            elif self.ext == '.DJVU':
                 self.set_current_page(data)
-            else:
+            elif self.ext == '.PDF':
                 self.set_current_page(data[0])
                 if data[1] & fitz.fz_link_flag_t_valid:
                     pos = self.doc_scroll.trans.transform_point(data[2])
@@ -172,10 +281,11 @@ class DocViewer(wx.SplitterWindow):
             self.document = self.ctx.new_document(djvu.decode.FileURI(self.filepath))
             self.document.decoding_job.wait()
             self.n_pages = len(self.document.pages)
-
-        else:
+        elif self.ext == '.PDF':
             self.document = self.ctx.open_document(self.filepath)
             self.n_pages = self.document.count_pages()
+        else:
+            return None
 
         self.outline_tree.DeleteAllItems()
         self.set_outline()
@@ -209,7 +319,7 @@ class DocViewer(wx.SplitterWindow):
         if self.search_text == '':
             pass
         elif self.hit < 0:
-            self.main_frame.statusbar.SetStatusText('"%s" not found' % 
+            self.main_frame.statusbar.SetStatusText('!Error: "%s" not found' % 
                                                     self.search_text)
         else:
             if self.ori > 0:
@@ -222,8 +332,8 @@ class DocViewer(wx.SplitterWindow):
                                             self.search_text, 
                                             ori*self.ori)
         
-    def set_current_page(self, current_page_idx, scroll=None):
-        self.doc_scroll.set_current_page(current_page_idx, True, scroll)
+    def set_current_page(self, current_page_idx, scroll=None, scale=None):
+        self.doc_scroll.set_current_page(current_page_idx, scroll=scroll, scale=scale)
         self.current_page_idx = current_page_idx
         self.main_frame.update_statusbar(self)
 
@@ -277,12 +387,13 @@ class DocViewer(wx.SplitterWindow):
         if code in self.marks:
             mark = (self.current_page_idx, self.scale, self.doc_scroll.GetViewStart())
             page_idx, scale, point = self.marks[code]
+            self.scale = scale
             if mark[0] != page_idx:
                 self.page_back.append(self.current_page_idx)
                 self.page_fwd = []
-                self.set_current_page(page_idx, point)
-            self.scale = scale
-            self.doc_scroll.set_scale(scale)
+                self.set_current_page(page_idx, point, scale=scale)
+            else:
+                self.doc_scroll.set_scale(scale, scroll=point)
             self.main_frame.update_statusbar(self)
             self.marks[96] = mark
 
@@ -299,13 +410,18 @@ class DocViewer(wx.SplitterWindow):
             eval(self.prev_cmd)
 
     def save_page(self):
-        self.main_frame.pages[self.inode] = (self.current_page_idx, self.filepath)
+        self.main_frame.pages[self.inode] = (self.filepath,
+                                             self.current_page_idx, 
+                                             self.scale,
+                                             self.doc_scroll.GetViewStart(),
+                                             self.show_outline)
 
     def on_size(self, event):
-        scroll_x, scroll_y = self.doc_scroll.GetViewStart()
-        self.doc_scroll.Scroll(0, 0)
-        self.put_center(self.doc_scroll)
-        self.doc_scroll.Scroll(scroll_x, scroll_y)
+        if not self.ext == '.EPUB':
+            scroll_x, scroll_y = self.doc_scroll.GetViewStart()
+            self.doc_scroll.Scroll(0, 0)
+            self.put_center(self.doc_scroll)
+            self.doc_scroll.Scroll(scroll_x, scroll_y)
 
     def put_center(self, doc_scroll):
         w_width, w_height = doc_scroll.GetSize()
@@ -360,4 +476,3 @@ class DocViewer(wx.SplitterWindow):
                 self.doc_scroll.Scroll(-1, y)
         except ValueError:
             pass
-
