@@ -348,6 +348,8 @@ class DocViewer(wx.SplitterWindow):
             self.set_current_page(self.page_fwd.pop())
 
     def on_fit_width(self, event):
+        if self.ext == '.EPUB':
+            return
         self.scale = self.fit_width_scale()
         self.main_frame.update_statusbar(self)
 

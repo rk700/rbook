@@ -26,7 +26,7 @@ def lines2dict(lines):
     for line in lines:
         line = line.strip()
         try:
-            inode, path, page, scale, posx, posy, show_outline = line.split(' ')
+            inode, path, page, scale, posx, posy, show_outline = line.split('\t')
         except ValueError:
             continue
         else:
@@ -40,7 +40,7 @@ def lines2dict(lines):
 def dict2lines(pages):
     res = []
     for inode, info in pages.items():
-        res.append('%s %s %s %s %s %s %s\n' % (str(inode), 
+        res.append('%s\t%s\t%s\t%s\t%s\t%s\t%s\n' % (str(inode), 
                                                info[0], 
                                                str(info[1]),
                                                str(info[2]),
