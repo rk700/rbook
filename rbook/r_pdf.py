@@ -98,8 +98,8 @@ class DocScroll(wx.ScrolledWindow):
 
     def set_page_size(self):
         self.trans = fitz.scale_matrix(self.scale, self.scale)
-        rect = self.trans.transform_rect(self.page_rect)
-        self.bbox = rect.round_rect()
+        self.rect = self.trans.transform_rect(self.page_rect) #page_rect is the unscaled one
+        self.bbox = self.rect.round_rect()
 
         self.width = self.bbox.get_width()
         self.height = self.bbox.get_height()
@@ -127,15 +127,16 @@ class DocScroll(wx.ScrolledWindow):
         mdev = self.display_list.new_list_device()
         current_page.run_page(mdev, fitz.fz_identity, None)
 
+
         self.links = current_page.load_links()
         self.link_context = None
 
         tdev = self.text_page.new_text_device(self.text_sheet)
-        self.display_list.run_display_list(tdev, fitz.fz_identity, 
-                                           self.bbox, None)
+        self.display_list.run_display_list(tdev, fitz.fz_identity, self.rect, None)
 
         if draw:
             self.setup_drawing(scroll=scroll)
+
 
     def setup_drawing(self, hitbbox=None, scroll=None):
         self.panel.SetSize((self.width, self.height))
@@ -147,14 +148,13 @@ class DocScroll(wx.ScrolledWindow):
         if scroll:
             self.Scroll(scroll[0], scroll[1])
 
-        self.pix = self.ctx.new_pixmap_with_bbox(fitz.fz_device_rgb, self.bbox)
+        self.pix = self.ctx.new_pixmap_with_irect(fitz.fz_device_rgb, self.bbox)
         self.pix.clear_pixmap(255);
         dev = self.pix.new_draw_device()
-        self.display_list.run_display_list(dev, self.trans,
-                                           self.bbox, None)
+        self.display_list.run_display_list(dev, self.trans, self.rect, None)
         if hitbbox:
             for bbox in hitbbox:
-                self.pix.invert_pixmap(self.trans.transform_bbox(bbox))
+                self.pix.invert_pixmap(self.trans.transform_irect(bbox))
 
         self.do_drawing()
 
@@ -201,7 +201,7 @@ class DocScroll(wx.ScrolledWindow):
                 hit = 0
             self.parent.current_page_idx = current_page_idx
             self.parent.main_frame.update_statusbar(self.parent)
-            trans_hitbbox = self.trans.transform_bbox(self.hitbbox[hit][0])
+            trans_hitbbox = self.trans.transform_irect(self.hitbbox[hit][0])
             self.setup_drawing(self.hitbbox[hit], 
                                (trans_hitbbox.x0/self.scroll_unit,
                                 trans_hitbbox.y0/self.scroll_unit))
@@ -230,10 +230,10 @@ class DocScroll(wx.ScrolledWindow):
             else:#search in the current page
                 old_hitbbox = self.hitbbox[self.parent.hit]
                 for bbox in old_hitbbox:
-                    self.pix.invert_pixmap(self.trans.transform_bbox(bbox))
+                    self.pix.invert_pixmap(self.trans.transform_irect(bbox))
                 new_hitbbox = self.hitbbox[newhit]
                 for bbox in new_hitbbox:
-                    self.pix.invert_pixmap(self.trans.transform_bbox(bbox))
+                    self.pix.invert_pixmap(self.trans.transform_irect(bbox))
                 self.do_drawing()
                 self.Scroll(new_hitbbox[0].x0/self.scroll_unit, 
                             new_hitbbox[0].y0/self.scroll_unit)
