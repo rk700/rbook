@@ -80,10 +80,11 @@ class DocViewer(wx.SplitterWindow):
 
         self.scale = self.doc_scroll.scale
         self.main_frame.update_statusbar(self)
+        self.view_start = (0,0)
             
         self.init()
 
-    def prepare_closing(self):
+    def __del__(self):
         if self.ext == '.EPUB':
             try: 
                 shutil.rmtree(os.path.join(os.path.expanduser('~/.rbook/cache/'),
@@ -188,7 +189,6 @@ class DocViewer(wx.SplitterWindow):
     def epub_find_page_idx(self, src):
         addr = src.split('#')
         html = addr[0]
-        #print(html)
         try:
             idx = self.items.index(html)
         except ValueError:
@@ -276,16 +276,11 @@ class DocViewer(wx.SplitterWindow):
         if not nextitem is None:
             self.pdf_init_outline_tree(nextitem, parent)
 
-    def on_refresh(self, event):
-        if self.ext == '.djvu':
-            self.document = self.ctx.new_document(djvu.decode.FileURI(self.filepath))
-            self.document.decoding_job.wait()
-            self.n_pages = len(self.document.pages)
-        elif self.ext == '.PDF':
-            self.document = self.ctx.open_document(self.filepath)
-            self.n_pages = self.document.count_pages()
-        else:
-            return None
+    def on_refresh(self):
+        if self.ext == '.EPUB':
+            return
+
+        self.doc_scroll.on_refresh()
 
         self.outline_tree.DeleteAllItems()
         self.set_outline()
@@ -337,29 +332,29 @@ class DocViewer(wx.SplitterWindow):
         self.current_page_idx = current_page_idx
         self.main_frame.update_statusbar(self)
 
-    def on_page_back(self, event):
+    def on_page_back(self):
         if len(self.page_back) > 0:
             self.page_fwd.append(self.current_page_idx)
             self.set_current_page(self.page_back.pop())
 
-    def on_page_fwd(self, event):
+    def on_page_fwd(self):
         if len(self.page_fwd) > 0:
             self.page_back.append(self.current_page_idx)
             self.set_current_page(self.page_fwd.pop())
 
-    def on_fit_width(self, event):
+    def on_fit_width(self):
         if self.ext == '.EPUB':
             return
         self.scale = self.fit_width_scale()
         self.main_frame.update_statusbar(self)
 
-    def on_zoom_in(self, event):
+    def on_zoom_in(self):
         try:
             self.set_scale(self.scale+0.2)
         except ValueError:
             raise ValueError('cannot zoom in anymore')
             
-    def on_zoom_out(self, event):
+    def on_zoom_out(self):
         try:
             self.set_scale(self.scale-0.2)
         except ValueError:
@@ -373,13 +368,13 @@ class DocViewer(wx.SplitterWindow):
         else:
             raise ValueError('%s is either too large or too small' % str(scale))
 
-    def on_prev_page(self, event):
+    def on_prev_page(self):
         try:
             self.change_page(self.current_page_idx-1)
         except ValueError:
             raise ValueError('already the first page')
 
-    def on_next_page(self, event):
+    def on_next_page(self):
         try:
             self.change_page(self.current_page_idx+1)
         except ValueError:
@@ -412,31 +407,11 @@ class DocViewer(wx.SplitterWindow):
             eval(self.prev_cmd)
 
     def save_page(self):
-        self.main_frame.pages[self.inode] = (self.filepath,
+        self.main_frame.pages[self.inode] = (self.filepath, 
                                              self.current_page_idx, 
-                                             self.scale,
-                                             self.doc_scroll.GetViewStart(),
+                                             self.scale, 
+                                             self.view_start, 
                                              self.show_outline)
-
-    def on_size(self, event):
-        if not self.ext == '.EPUB':
-            scroll_x, scroll_y = self.doc_scroll.GetViewStart()
-            self.doc_scroll.Scroll(0, 0)
-            self.put_center(self.doc_scroll)
-            self.doc_scroll.Scroll(scroll_x, scroll_y)
-
-    def put_center(self, doc_scroll):
-        w_width, w_height = doc_scroll.GetSize()
-        h_move = 0
-        v_move = 0
-        if w_width > doc_scroll.width:
-            if w_height < doc_scroll.height:
-                h_move = max(0, w_width-doc_scroll.vscroll_wid-doc_scroll.width)/2
-            else:
-                h_move = (w_width-doc_scroll.width)/2
-        if w_height > doc_scroll.height:
-            v_move = (w_height-doc_scroll.height)/2
-        doc_scroll.panel.Move((h_move, v_move))
 
     def fit_width_scale(self):
         width = self.doc_scroll.orig_width
@@ -467,13 +442,13 @@ class DocViewer(wx.SplitterWindow):
                     if self.current_page_idx == 0:
                         pass
                     else:
-                        self.on_prev_page(None)
+                        self.on_prev_page()
                         self.doc_scroll.Scroll(0, self.doc_scroll.GetScrollRange(wx.VERTICAL))
             elif y > bottom:
                 if self.doc_scroll.GetViewStart()[1] < bottom:
                     self.doc_scroll.Scroll(-1, self.doc_scroll.GetScrollRange(wx.VERTICAL)) 
                 else:
-                    self.on_next_page(None)
+                    self.on_next_page()
             else:
                 self.doc_scroll.Scroll(-1, y)
         except ValueError:

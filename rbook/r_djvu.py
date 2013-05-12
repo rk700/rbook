@@ -19,46 +19,20 @@
 # along with rbook.  If not, see <http://www.gnu.org/licenses/>.
 
 
-#import subprocess
-
 import wx
+import doc_scroll
 import djvu.decode
 
-class DocScroll(wx.ScrolledWindow):
+class DocScroll(doc_scroll.DocScroll):
     def __init__(self, parent, current_page_idx):
         self.fmt = djvu.decode.PixelFormatRgb()
         self.fmt.rows_top_to_bottom = 1 
         self.fmt.y_top_to_bottom = 1
-        self.scroll_unit = 10.0
-        wx.ScrolledWindow.__init__(self, parent)
-        self.parent = parent
-        self.vscroll_wid = float(wx.SystemSettings_GetMetric(wx.SYS_VSCROLL_X))
-        current_page = self.parent.document.pages[current_page_idx].decode(True)
-        width = current_page.width
-        w_width, w_height = self.parent.main_frame.GetSize()
-        if parent.show_outline > 0:
-            w_width -= 200
-        scale = round((w_width-self.vscroll_wid-self.parent.GetSashSize())/width-0.005, 2)
-        if not self.parent.scale == 0:
-            self.scale = self.parent.scale
-        elif scale > self.parent.min_scale and scale < self.parent.max_scale:
-            self.scale = scale
-        else:
-            self.scale = 1.0
 
-        self.panel = wx.Panel(self, -1)
-        self.set_current_page(current_page_idx, scroll=self.parent.init_pos)
-       
-        self.panel.Bind(wx.EVT_PAINT, self.on_paint)
-        self.Bind(wx.EVT_SIZE, self.parent.on_size)
-        self.Bind(wx.EVT_SCROLLWIN_LINEDOWN, 
-                  lambda event:self.parent.vertical_scroll(1))
-        self.Bind(wx.EVT_SCROLLWIN_LINEUP, 
-                  lambda event:self.parent.vertical_scroll(-1))
-        self.panel.Bind(wx.EVT_KEY_DOWN, lambda event:wx.PostEvent(self.parent.main_frame, event))
 
-    def on_paint(self, event):
-        dc = wx.BufferedPaintDC(self.panel, self.buffer)
+        self.width = parent.document.pages[current_page_idx].decode(True).width
+        
+        doc_scroll.DocScroll.__init__(self, parent, current_page_idx)
 
     def set_current_page(self, current_page_idx, draw=True, scroll=None, scale=None):
         self.hitbbox = []
@@ -66,22 +40,14 @@ class DocScroll(wx.ScrolledWindow):
         self.orig_width = self.current_page.width
         if scale:
             self.scale = scale
-        self.width = int(self.scale*self.current_page.width)
-        self.height = int(self.scale*self.current_page.height)
+        self.set_page_size()
 
         self.text = self.parent.document.pages[current_page_idx].text.sexpr
         if draw:
             self.setup_drawing(scroll=scroll)
 
     def setup_drawing(self, hitbbox=None, scroll=None):
-        self.panel.SetSize((self.width, self.height))
-        self.SetVirtualSize((self.width, self.height))
-        self.SetScrollbars(self.scroll_unit, self.scroll_unit, 
-                           self.width/self.scroll_unit, 
-                           self.height/self.scroll_unit)
-        self.parent.put_center(self)
-        if scroll:
-            self.Scroll(scroll[0], scroll[1])
+        doc_scroll.DocScroll.setup_drawing(self, hitbbox, scroll)
 
         try:
             self.data = self.current_page.render(djvu.decode.RENDER_COLOR, 
@@ -106,21 +72,12 @@ class DocScroll(wx.ScrolledWindow):
         dc = wx.BufferedDC(wx.ClientDC(self.panel), 
                            self.buffer)
 
-    def set_scale(self, scale, scroll=None):
-        if not self.scale == scale:
-            self.scale = scale
-            p_width, p_height = self.panel.GetSize()
-            scroll_x, scroll_y = self.GetViewStart()
-            x = 1.0*scroll_x/p_width
-            y = 1.0*scroll_y/p_height
+    def new_scale_setup_drawing(self):
+        self.setup_drawing()
 
-            self.width = scale*self.current_page.width
-            self.height = scale*self.current_page.height
-            self.setup_drawing()
-            if not scroll:
-                self.Scroll(int(x*self.width), int(y*self.height))
-        if scroll:
-            self.Scroll(scroll[0], scroll[1])
+    def set_page_size(self):
+        self.width = int(self.scale*self.current_page.width)
+        self.height = int(self.scale*self.current_page.height)
 
     def search(self, text, s):
         hitbbox = []
@@ -155,66 +112,21 @@ class DocScroll(wx.ScrolledWindow):
             pass
         return hitbbox
 
-    def search_in_page(self, current_page_idx, s, ori):
-        self.hitbbox = self.search(self.text, s)
-        while len(self.hitbbox) == 0:
-            current_page_idx += ori
-            if current_page_idx == self.parent.n_pages:
-                current_page_idx = 0
-            elif current_page_idx == -1:
-                current_page_idx = self.parent.n_pages-1
+    def get_hitbbox(self, s):
+        return self.search(self.text, s)
 
-            if not current_page_idx == self.parent.current_page_idx:
-                self.set_current_page(current_page_idx, False)
-                self.hitbbox = self.search(self.text, s)
-            else:
-                break
-        if len(self.hitbbox) == 0: #not found
-            hit = -1
-            self.set_current_page(current_page_idx)
-            self.parent.main_frame.statusbar.SetStatusText('!Error: "%s" not found' % s)
-        else:
-            if ori < 0:
-                hit = len(self.hitbbox)-1
-            else:
-                hit = 0
-            self.parent.current_page_idx = current_page_idx
-            self.parent.main_frame.update_statusbar(self.parent)
-            hitbbox = self.hitbbox[hit]
-            self.setup_drawing(hitbbox,
-                               (self.scale*hitbbox[0]/self.scroll_unit,
-                                self.scale*hitbbox[3]/self.scroll_unit))
+    def scroll_to_next_found(self, hit):
+        hitbbox = self.hitbbox[hit]
+        self.setup_drawing(hitbbox, 
+                           (self.scale*hitbbox[0]/self.scroll_unit, 
+                            self.scale*hitbbox[3]/self.scroll_unit))
 
-        return hit
-
-
-    def search_next(self, current_page_idx, s, ori):
-        if len(self.hitbbox) == 0:#a new page
-            newhit = self.search_in_page(current_page_idx, s, ori)
-        else:
-            newhit = self.parent.hit + ori
-            if newhit == len(self.hitbbox):# search in the next page
-                page_index = current_page_idx + 1
-                if page_index == self.parent.n_pages:
-                    page_index = 0
-                self.set_current_page(page_index, False)
-                self.parent.current_page_idx = page_index
-                newhit = self.search_in_page(page_index, s, ori)
-            elif newhit == -1: #search in the prev page
-                page_index = current_page_idx - 1
-                if page_index == -1:
-                    page_index = self.parent.n_pages - 1
-                self.set_current_page(page_index, False)
-                self.parent.current_page_idx = page_index
-                newhit = self.search_in_page(page_index, s, ori)
-            else:#search in the current page
-                image = wx.EmptyImage(self.width, self.height)
-                image.SetData(self.invert_rect(self.hitbbox[newhit]))
-                self.buffer = wx.BitmapFromImage(image)
-                dc = wx.BufferedDC(wx.ClientDC(self.panel), 
-                                   self.buffer)
-                self.Scroll(-1, self.hitbbox[newhit][3]*self.scale/self.scroll_unit)
-        return newhit
+    def search_in_current(self, newhit):
+        image = wx.EmptyImage(self.width, self.height)
+        image.SetData(self.invert_rect(self.hitbbox[newhit]))
+        self.buffer = wx.BitmapFromImage(image)
+        dc = wx.BufferedDC(wx.ClientDC(self.panel), self.buffer)
+        self.Scroll(-1, self.hitbbox[newhit][3]*self.scale/self.scroll_unit)
 
     def invert_rect(self, hitbbox):
         x0 = int(hitbbox[0]*self.scale) 
@@ -230,3 +142,8 @@ class DocScroll(wx.ScrolledWindow):
             y0 = y0 + 1
 
         return ''.join(data)
+
+    def on_refresh(self):
+        self.parent.document = self.parent.ctx.new_document(djvu.decode.FileURI(self.parent.filepath))
+        self.parent.document.decoding_job.wait()
+        self.parent.n_pages = len(self.parent.document.pages)

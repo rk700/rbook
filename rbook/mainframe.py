@@ -63,7 +63,6 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.on_close)
         self.Bind(fnb.EVT_FLATNOTEBOOK_PAGE_CHANGED, self.on_page_changed, self.notebook)
         self.Bind(fnb.EVT_FLATNOTEBOOK_PAGE_CLOSED, self.on_page_closed, self.notebook)
-        self.Bind(fnb.EVT_FLATNOTEBOOK_PAGE_CLOSING, self.on_page_closing, self.notebook)
         self.Bind(wx.EVT_KEY_DOWN, self.handle_keys)
         self.textctrl.Bind(wx.EVT_TEXT, self.on_text)
         self.textctrl.Bind(wx.EVT_KEY_DOWN, self.text_key_down)
@@ -127,10 +126,6 @@ class MainFrame(wx.Frame):
                 self.textctrl.SetFocus()
         event.Skip()
 
-    def on_page_closing(self, event):
-        self.notebook.GetCurrentPage().prepare_closing()
-        event.Skip()
-
     def on_page_changed(self, event, n=-1):
         if n == -1:
             n = event.GetSelection()
@@ -148,6 +143,7 @@ class MainFrame(wx.Frame):
             while i < n:
                 self.notebook.GetPage(i).save_page()
                 i += 1
+
 
             pages = os.path.expanduser('~/.rbook/pages')
             try:
@@ -281,17 +277,17 @@ class MainFrame(wx.Frame):
                 self.notebook.SetSelection(n)
                 self.on_page_changed(None, n)
             elif ctrl_down and keycode == 70: #c-f
-                doc_viewer.on_next_page(None)
-                doc_viewer.prev_cmd = 'self.on_next_page(None)'
+                doc_viewer.on_next_page()
+                doc_viewer.prev_cmd = 'self.on_next_page()'
             elif ctrl_down and keycode == 66: #c-b
-                doc_viewer.on_prev_page(None)
-                doc_viewer.prev_cmd = 'self.on_prev_page(None)'
+                doc_viewer.on_prev_page()
+                doc_viewer.prev_cmd = 'self.on_prev_page()'
             elif ctrl_down and keycode == 79: #c-o
-                doc_viewer.on_page_back(None)
-                doc_viewer.prev_cmd = 'self.on_page_back(None)'
+                doc_viewer.on_page_back()
+                doc_viewer.prev_cmd = 'self.on_page_back()'
             elif ctrl_down and keycode == 73: #c-i
-                doc_viewer.on_page_fwd(None)
-                doc_viewer.prev_cmd = 'self.on_page_fwd(None)'
+                doc_viewer.on_page_fwd()
+                doc_viewer.prev_cmd = 'self.on_page_fwd()'
             elif ctrl_down and keycode == 85: #c-u
                 doc_viewer.vertical_scroll(-20)
                 doc_viewer.prev_cmd = 'self.vertical_scroll(-20)'
@@ -329,9 +325,9 @@ class MainFrame(wx.Frame):
                 #no prev key, no nums, press g or m or Z
                     self.statusbar.SetStatusText(chr(rawkeycode))
                 elif keycode == 82: # press r
-                    doc_viewer.on_refresh(None)
+                    doc_viewer.on_refresh()
                 elif keycode == 87: # press w
-                    doc_viewer.on_fit_width(None)
+                    doc_viewer.on_fit_width()
                 elif keycode == 68:#press D or d
                     self.notebook.DeletePage(self.notebook.GetSelection())
                 elif rawkeycode == 71:#press G
@@ -388,11 +384,11 @@ class MainFrame(wx.Frame):
                     self.statusbar.SetStatusText('')
 
             elif rawkeycode == 43:# +, zoom in
-                doc_viewer.on_zoom_in(None)
-                doc_viewer.prev_cmd = 'self.on_zoom_in(None)'
+                doc_viewer.on_zoom_in()
+                doc_viewer.prev_cmd = 'self.on_zoom_in()'
             elif rawkeycode == 45:# -, zoom out
-                doc_viewer.on_zoom_out(None)
-                doc_viewer.prev_cmd = 'self.on_zoom_out(None)'
+                doc_viewer.on_zoom_out()
+                doc_viewer.prev_cmd = 'self.on_zoom_out()'
             elif keycode == wx.WXK_ESCAPE:
                 self.statusbar.SetStatusText('')
             elif keycode == 46: #. repeat cmd

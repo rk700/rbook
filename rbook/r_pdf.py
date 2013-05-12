@@ -22,39 +22,18 @@
 import subprocess
 
 import wx
+import doc_scroll
 import fitz
 
 
-class DocScroll(wx.ScrolledWindow):
+class DocScroll(doc_scroll.DocScroll):
     def __init__(self, parent, current_page_idx):
-        self.scroll_unit = 10.0
-        wx.ScrolledWindow.__init__(self, parent)
-        self.parent = parent
-        self.ctx = self.parent.ctx
-        self.vscroll_wid = wx.SystemSettings_GetMetric(wx.SYS_VSCROLL_X)
-        current_page = self.parent.document.load_page(current_page_idx)
-        width = current_page.bound_page().get_width()
-        w_width, w_height = self.parent.main_frame.GetSize()
-        if parent.show_outline > 0:
-            w_width -= 200
-        scale = round((w_width-self.vscroll_wid-self.parent.GetSashSize())/width-0.005, 2)
-        if not self.parent.scale == 0:
-            self.scale = self.parent.scale
-        elif scale > self.parent.min_scale and scale < self.parent.max_scale:
-            self.scale = scale
-        else:
-            self.scale = 1.0
 
-        self.panel = wx.Panel(self, -1)
-        self.set_current_page(current_page_idx, scroll=self.parent.init_pos)
-       
-        self.panel.Bind(wx.EVT_PAINT, self.on_paint)
-        self.Bind(wx.EVT_SIZE, self.parent.on_size)
-        self.Bind(wx.EVT_SCROLLWIN_LINEDOWN, 
-                  lambda event:self.parent.vertical_scroll(1))
-        self.Bind(wx.EVT_SCROLLWIN_LINEUP, 
-                  lambda event:self.parent.vertical_scroll(-1))
-        self.panel.Bind(wx.EVT_KEY_DOWN, lambda event:wx.PostEvent(self.parent.main_frame, event))
+        self.ctx = parent.ctx
+        self.width = parent.document.load_page(current_page_idx).bound_page().get_width()
+
+        doc_scroll.DocScroll.__init__(self, parent, current_page_idx)
+
         self.panel.Bind(wx.EVT_MOTION, self.on_motion)
         self.panel.Bind(wx.EVT_LEFT_DOWN, self.on_left_down)
 
@@ -92,9 +71,6 @@ class DocScroll(wx.ScrolledWindow):
             elif self.link_context[0] == fitz.FZ_LINK_URI:
                 subprocess.Popen(('xdg-open', self.link_context[4]))
         event.Skip()
-
-    def on_paint(self, event):
-        dc = wx.BufferedPaintDC(self.panel, self.buffer)
 
     def set_page_size(self):
         self.trans = fitz.scale_matrix(self.scale, self.scale)
@@ -139,14 +115,7 @@ class DocScroll(wx.ScrolledWindow):
 
 
     def setup_drawing(self, hitbbox=None, scroll=None):
-        self.panel.SetSize((self.width, self.height))
-        self.SetVirtualSize((self.width, self.height))
-        self.SetScrollbars(self.scroll_unit, self.scroll_unit, 
-                           self.width/self.scroll_unit, 
-                           self.height/self.scroll_unit)
-        self.parent.put_center(self)
-        if scroll:
-            self.Scroll(scroll[0], scroll[1])
+        doc_scroll.DocScroll.setup_drawing(self, hitbbox, scroll)
 
         self.pix = self.ctx.new_pixmap_with_irect(fitz.fz_device_rgb, self.bbox)
         self.pix.clear_pixmap(255);
@@ -158,83 +127,34 @@ class DocScroll(wx.ScrolledWindow):
 
         self.do_drawing()
 
-    def set_scale(self, scale, scroll=None):
-        if not self.scale == scale:
-            self.scale = scale
-            p_width, p_height = self.panel.GetSize()
-            scroll_x, scroll_y = self.GetViewStart()
-            x = 1.0*scroll_x/p_width
-            y = 1.0*scroll_y/p_height
-            self.set_page_size()
-            try:
-                hitbbox = self.hitbbox[self.parent.hit]
-                self.setup_drawing(hitbbox)
-            except IndexError:
-                self.setup_drawing()
-            if not scroll:
-                self.Scroll(int(x*self.width), int(y*self.height))
-        if scroll:
-            self.Scroll(scroll[0], scroll[1])
+    def new_scale_setup_drawing(self):
+        try:
+            hitbbox = self.hitbbox[self.parent.hit]
+            self.setup_drawing(hitbbox)
+        except IndexError:
+            self.setup_drawing()
 
-    def search_in_page(self, current_page_idx, s, ori):
-        self.hitbbox = self.text_page.search(s, self.parent.main_frame.settings['ic'])
-        while len(self.hitbbox) == 0:
-            current_page_idx += ori
-            if current_page_idx == self.parent.n_pages:
-                current_page_idx = 0
-            elif current_page_idx == -1:
-                current_page_idx = self.parent.n_pages-1
+    def scroll_to_next_found(self, hit):
+        trans_hitbbox = self.trans.transform_irect(self.hitbbox[hit][0])
+        self.setup_drawing(self.hitbbox[hit], 
+                           (trans_hitbbox.x0/self.scroll_unit,
+                            trans_hitbbox.y0/self.scroll_unit))
 
-            if not current_page_idx == self.parent.current_page_idx:
-                self.set_current_page(current_page_idx, False)
-                self.hitbbox = self.text_page.search(s, self.parent.main_frame.settings['ic'])
-            else:
-                break
-        if len(self.hitbbox) == 0: #not found
-            hit = -1
-            self.set_current_page(current_page_idx)
-            self.parent.main_frame.statusbar.SetStatusText('!Error: "%s" not found' % s)
-        else:
-            if ori < 0:
-                hit = len(self.hitbbox)-1
-            else:
-                hit = 0
-            self.parent.current_page_idx = current_page_idx
-            self.parent.main_frame.update_statusbar(self.parent)
-            trans_hitbbox = self.trans.transform_irect(self.hitbbox[hit][0])
-            self.setup_drawing(self.hitbbox[hit], 
-                               (trans_hitbbox.x0/self.scroll_unit,
-                                trans_hitbbox.y0/self.scroll_unit))
+    def get_hitbbox(self, s):
+        return self.text_page.search(s, self.parent.main_frame.settings['ic'])
 
-        return hit
+    def search_in_current(self, newhit):
+        old_hitbbox = self.hitbbox[self.parent.hit]
+        for bbox in old_hitbbox:
+            self.pix.invert_pixmap(self.trans.transform_irect(bbox))
+        new_hitbbox = self.hitbbox[newhit]
+        for bbox in new_hitbbox:
+            self.pix.invert_pixmap(self.trans.transform_irect(bbox))
+        self.do_drawing()
+        self.Scroll(new_hitbbox[0].x0/self.scroll_unit, 
+                    new_hitbbox[0].y0/self.scroll_unit)
 
-    def search_next(self, current_page_idx, s, ori):
-        if len(self.hitbbox) == 0:#a new page
-            newhit = self.search_in_page(current_page_idx, s, ori)
-        else:
-            newhit = self.parent.hit + ori
-            if newhit == len(self.hitbbox):# search in the next page
-                page_index = current_page_idx + 1
-                if page_index == self.parent.n_pages:
-                    page_index = 0
-                self.set_current_page(page_index, False)
-                self.parent.current_page_idx = page_index
-                newhit = self.search_in_page(page_index, s, ori)
-            elif newhit == -1: #search in the prev page
-                page_index = current_page_idx - 1
-                if page_index == -1:
-                    page_index = self.parent.n_pages - 1
-                self.set_current_page(page_index, False)
-                self.parent.current_page_idx = page_index
-                newhit = self.search_in_page(page_index, s, ori)
-            else:#search in the current page
-                old_hitbbox = self.hitbbox[self.parent.hit]
-                for bbox in old_hitbbox:
-                    self.pix.invert_pixmap(self.trans.transform_irect(bbox))
-                new_hitbbox = self.hitbbox[newhit]
-                for bbox in new_hitbbox:
-                    self.pix.invert_pixmap(self.trans.transform_irect(bbox))
-                self.do_drawing()
-                self.Scroll(new_hitbbox[0].x0/self.scroll_unit, 
-                            new_hitbbox[0].y0/self.scroll_unit)
-        return newhit
+
+    def on_refresh(self):
+        self.parent.document = self.ctx.open_document(self.parent.filepath)
+        self.parent.n_pages = self.parent.document.count_pages()
