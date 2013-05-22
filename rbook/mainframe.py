@@ -81,6 +81,7 @@ class MainFrame(wx.Frame):
         if event.GetKeyCode() == wx.WXK_BACK:
             if (not doc_viewer is None) and len(self.textctrl.GetValue()) == 1:
                 doc_viewer.doc_scroll.panel.SetFocus()
+            event.Skip()
         elif event.GetKeyCode() == wx.WXK_RETURN:
             self.textctrl.Clear()
             self.statusbar.SetStatusText(text)
@@ -106,7 +107,8 @@ class MainFrame(wx.Frame):
                 self.on_close(None)
             else:
                 self.textctrl.Clear()
-        event.Skip()
+        else:
+            event.Skip()
 
     def on_text(self, event):
         self.completion = 0
@@ -137,14 +139,8 @@ class MainFrame(wx.Frame):
         self.update_statusbar(doc_viewer)
 
     def on_close(self, event):
+        self.DestroyChildren()
         if self.settings['storepages']:
-            n = self.notebook.GetPageCount()
-            i = 0
-            while i < n:
-                self.notebook.GetPage(i).save_page()
-                i += 1
-
-
             pages = os.path.expanduser('~/.rbook/pages')
             try:
                 f = open(pages, 'w')
