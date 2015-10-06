@@ -29,8 +29,10 @@ import fitz
 class DocScroll(doc_scroll.DocScroll):
     def __init__(self, parent, current_page_idx):
 
-        self.ctx = parent.ctx
-        self.width = parent.document.load_page(current_page_idx).bound_page().get_width()
+        #self.ctx = parent.ctx
+        #self.currentPage = parent.document.loadPage(current_page_idx)
+        #self.width = parent.document.load_page(current_page_idx).bound_page().get_width()
+        self.width = parent.document.loadPage(current_page_idx).bound().width
 
         doc_scroll.DocScroll.__init__(self, parent, current_page_idx)
 
@@ -40,50 +42,52 @@ class DocScroll(doc_scroll.DocScroll):
     def on_motion(self, event):
         cx, cy = event.GetPositionTuple()
         mouse_on_link = False
-        for link in self.links:
-            rect = self.trans.transform_rect(link.get_rect())
+        link = self.links
+        while link:
+            rect = fitz.Rect(link.rect).transform(self.trans)
             if cx >= rect.x0 and cx <= rect.x1 and \
                cy >= rect.y0 and cy <= rect.y1:
                 mouse_on_link = True
                 break
+            link = link.next
         if mouse_on_link:
             self.panel.SetCursor(wx.StockCursor(wx.CURSOR_HAND))
-            self.link_context = (link.get_kind(), \
-                                 link.get_page(), \
-                                 link.get_page_flags(), \
-                                 link.get_page_lt(), \
-                                 link.get_uri())
+            self.link_context = (link.dest.kind, \
+                                 link.dest.page, \
+                                 link.dest.flags, \
+                                 link.dest.lt, \
+                                 link.dest.uri)
         else:
             self.panel.SetCursor(wx.StockCursor(wx.CURSOR_ARROW))
             self.link_context = None
 
     def on_left_down(self, event):
         if not self.link_context is None:
-            if self.link_context[0] == fitz.FZ_LINK_GOTO:
+            if self.link_context[0] == fitz.LINK_GOTO:
                 # after change page, link_context becomes None,
                 # so we need to record the pos
                 pos = self.link_context[3]
                 flag = self.link_context[2]
                 self.parent.change_page(self.link_context[1])
-                if flag & fitz.fz_link_flag_t_valid:
-                    pos = self.trans.transform_point(pos)
+                if flag & fitz.LINK_FLAG_T_VALID:
+                    pos = fitz.Point(pos).transform(self.trans)
                     self.Scroll(-1, (self.height-pos.y)/self.scroll_unit)
-            elif self.link_context[0] == fitz.FZ_LINK_URI:
+            elif self.link_context[0] == fitz.LINK_URI:
                 subprocess.Popen(('xdg-open', self.link_context[4]))
         event.Skip()
 
     def set_page_size(self):
-        self.trans = fitz.scale_matrix(self.scale, self.scale)
-        self.rect = self.trans.transform_rect(self.page_rect) #page_rect is the unscaled one
-        self.bbox = self.rect.round_rect()
+        self.trans = fitz.Matrix(self.scale, self.scale)
+        self.rect = fitz.Rect(self.page_rect).transform(self.trans) #page_rect is the unscaled one
+        self.irect = self.rect.round()
 
-        self.width = self.bbox.get_width()
-        self.height = self.bbox.get_height()
+        self.width = self.irect.width
+        self.height = self.irect.height
 
     def do_drawing(self):
-        self.buffer = wx.BitmapFromBufferRGBA(self.pix.get_width(),
-                                              self.pix.get_height(), 
-                                              self.pix.get_samples())
+        self.buffer = wx.BitmapFromBufferRGBA(self.width,
+                                              self.height, 
+                                              self.pix.samples)
         dc = wx.BufferedDC(wx.ClientDC(self.panel), 
                            self.buffer)
 
@@ -91,46 +95,43 @@ class DocScroll(doc_scroll.DocScroll):
         self.hitbbox = []
         if scale:
             self.scale = scale
-        current_page = self.parent.document.load_page(current_page_idx)
-        self.page_rect = current_page.bound_page()
-        self.orig_width = self.page_rect.get_width()
+        current_page = self.parent.document.loadPage(current_page_idx)
+        self.page_rect = current_page.bound()
+        #self.orig_width = self.page_rect.width
         self.set_page_size()
 
-        self.text_sheet = self.ctx.new_text_sheet()
-        self.text_page = self.ctx.new_text_page(self.page_rect)
+        self.text_sheet = fitz.TextSheet()
+        self.text_page = fitz.TextPage()
 
-        self.display_list = self.ctx.new_display_list()
-        mdev = self.display_list.new_list_device()
-        current_page.run_page(mdev, fitz.fz_identity, None)
+        self.display_list = fitz.DisplayList()
+        mdev = fitz.Device(self.display_list)
+        current_page.run(mdev, self.trans)
 
 
-        self.links = current_page.load_links()
+        self.links = current_page.loadLinks()
         self.link_context = None
 
-        tdev = self.text_page.new_text_device(self.text_sheet)
-        self.display_list.run_display_list(tdev, fitz.fz_identity, self.rect, None)
+        self.display_list.run(fitz.Device(self.text_sheet, self.text_page), fitz.Identity, self.rect)
 
         if draw:
             self.setup_drawing(scroll=scroll)
 
-
     def setup_drawing(self, hitbbox=None, scroll=None):
         doc_scroll.DocScroll.setup_drawing(self, hitbbox, scroll)
 
-        self.pix = self.ctx.new_pixmap_with_irect(fitz.fz_device_rgb, self.bbox)
-        self.pix.clear_pixmap(255);
-        dev = self.pix.new_draw_device()
-        self.display_list.run_display_list(dev, self.trans, self.rect, None)
+        self.pix = fitz.Pixmap(fitz.Colorspace(fitz.CS_RGB), self.irect)
+        self.pix.clearWith(255);
+        self.display_list.run(fitz.Device(self.pix), fitz.Identity, self.rect)
         if hitbbox:
-            for bbox in hitbbox:
-                self.pix.invert_pixmap(self.trans.transform_irect(bbox))
+            for rect in hitbbox:
+                self.pix.invertIRect(rect.round())
 
         self.do_drawing()
 
     def new_scale_setup_drawing(self):
         try:
-            hitbbox = self.hitbbox[self.parent.hit]
-            self.setup_drawing(hitbbox)
+            #hitbbox = self.hitbbox[self.parent.hit]
+            self.setup_drawing()
         except IndexError:
             self.setup_drawing()
 
@@ -156,5 +157,5 @@ class DocScroll(doc_scroll.DocScroll):
 
 
     def on_refresh(self):
-        self.parent.document = self.ctx.open_document(self.parent.filepath)
-        self.parent.n_pages = self.parent.document.count_pages()
+        self.parent.document = fitz.Document(self.parent.filepath)
+        self.parent.n_pages = self.parent.document.pageCount

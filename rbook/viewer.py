@@ -119,10 +119,10 @@ class DocViewer(wx.SplitterWindow):
             self.doc_scroll = r_djvu.DocScroll(self, self.current_page_idx);
 
     def pdf_init_doc(self):
-        self.ctx = fitz.Context(fitz.FZ_STORE_DEFAULT)
+        #self.ctx = fitz.Context(fitz.FZ_STORE_DEFAULT)
         try:
-            self.document = self.ctx.open_document(self.filepath)
-            self.n_pages = self.document.count_pages()
+            self.document = fitz.Document(self.filepath)
+            self.n_pages = self.document.pageCount
         except IOError:
             self.Destroy()
             raise IOError('cannot open file %s' % docfile)
@@ -221,10 +221,10 @@ class DocViewer(wx.SplitterWindow):
             except StopIteration:
                 self.show_outline = 0
         elif self.ext == '.PDF':
-            outline = self.document.load_outline()
+            outline = self.document.outline
             if not outline is None:
                 root = self.outline_tree.AddRoot('/')
-                self.pdf_init_outline_tree(outline.get_first(), root)
+                self.pdf_init_outline_tree(outline, root)
                 self.show_outline *= 1
             else:
                 self.show_outline *= 0
@@ -263,16 +263,16 @@ class DocViewer(wx.SplitterWindow):
             self.djvu_init_outline_tree(item, parent)
 
     def pdf_init_outline_tree(self, outline_item, parent):
-        child = self.outline_tree.AppendItem(parent, outline_item.get_title())
+        child = self.outline_tree.AppendItem(parent, outline_item.title)
         self.outline_tree.SetItemData(child, 
                                       wx.TreeItemData(
-                                         (outline_item.get_page(),
-                                          outline_item.get_page_flags(),
-                                          outline_item.get_page_lt())))
-        downitem = outline_item.get_down()
+                                         (outline_item.dest.page,
+                                          outline_item.dest.flags,
+                                          outline_item.dest.lt)))
+        downitem = outline_item.down
         if not downitem is None:
             self.pdf_init_outline_tree(downitem, child)
-        nextitem = outline_item.get_next()
+        nextitem = outline_item.next
         if not nextitem is None:
             self.pdf_init_outline_tree(nextitem, parent)
 
