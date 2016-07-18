@@ -104,8 +104,7 @@ class DocScroll(doc_scroll.DocScroll):
         self.text_page = fitz.TextPage()
 
         self.display_list = fitz.DisplayList()
-        mdev = fitz.Device(self.display_list)
-        current_page.run(mdev, self.trans)
+        current_page.run(fitz.Device(self.display_list), self.trans)
 
 
         self.links = current_page.loadLinks()
@@ -121,7 +120,7 @@ class DocScroll(doc_scroll.DocScroll):
 
         self.pix = fitz.Pixmap(fitz.Colorspace(fitz.CS_RGB), self.irect)
         self.pix.clearWith(255);
-        self.display_list.run(fitz.Device(self.pix), fitz.Identity, self.rect)
+        self.display_list.run(fitz.Device(self.pix, None), fitz.Identity, self.rect)
         if hitbbox:
             for rect in hitbbox:
                 self.pix.invertIRect(rect.round())
