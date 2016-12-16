@@ -85,7 +85,7 @@ class DocScroll(doc_scroll.DocScroll):
         self.height = self.irect.height
 
     def do_drawing(self):
-        self.buffer = wx.BitmapFromBufferRGBA(self.width,
+        self.buffer = wx.BitmapFromBuffer(self.width,
                                               self.height, 
                                               self.pix.samples)
         dc = wx.BufferedDC(wx.ClientDC(self.panel), 
@@ -101,9 +101,9 @@ class DocScroll(doc_scroll.DocScroll):
         self.set_page_size()
 
         self.text_sheet = fitz.TextSheet()
-        self.text_page = fitz.TextPage()
+        self.text_page = fitz.TextPage(self.page_rect)
 
-        self.display_list = fitz.DisplayList()
+        self.display_list = fitz.DisplayList(self.page_rect)
         current_page.run(fitz.Device(self.display_list), self.trans)
 
 
